@@ -1,0 +1,6 @@
+tools/rayas — contar rayas transitorias en una grabacion de la capturadora HDMI (25/09/2026)
+  grabar:  ffmpeg -f dshow -video_size 1280x720 -framerate 60 -vcodec mjpeg -i video="USB Video" -t 24 -c:v copy x.avi
+  contar:  python rayas.py x.avi [dir_recortes] [umbral]   -> rayas de <=8 px de alto que difieren de 3 de sus 4 vecinos temporales
+  filtrar: python jpegerr.py x.avi   -> cuantas caen en fotogramas con ERROR del decodificador MJPEG (artefactos de la
+           capturadora MS2109 con imagenes densas: bandas de 8-16 px con colores, resto del cuadro en verde) y cuantas en
+           fotogramas limpios (glitch real). Decodifica con -vsync 0: la capturadora a veces entrega VFR con r_frame_rate=600.

@@ -1,0 +1,322 @@
+diff --git a/src/portable/chipidea/ci_hs/hcd_ci_hs.c b/src/portable/chipidea/ci_hs/hcd_ci_hs.c
+index 0f24f5b..3b4097a 100644
+--- a/src/portable/chipidea/ci_hs/hcd_ci_hs.c
++++ b/src/portable/chipidea/ci_hs/hcd_ci_hs.c
+@@ -50,6 +50,8 @@ bool hcd_dcache_clean_invalidate(const void *addr, uint32_t data_size) {
+ 
+   #include "ci_hs_rw61x.h"
+ 
++#elif defined(CI_HS_ZYNQ7000)
++  #include "ci_hs_zynq.h"          // MSXimus: Zynq-7000 USB0 (ChipIdea + ULPI USB3320)
+ #else
+   #error "Unsupported MCUs"
+ #endif
+diff --git a/src/portable/ehci/ehci.c b/src/portable/ehci/ehci.c
+index 660c38d..304697d 100644
+--- a/src/portable/ehci/ehci.c
++++ b/src/portable/ehci/ehci.c
+@@ -139,7 +139,7 @@ TU_ATTR_ALWAYS_INLINE static inline uint8_t qhd_ep_addr(ehci_qhd_t const *qhd) {
+ 
+ TU_ATTR_ALWAYS_INLINE static inline ehci_qtd_t* qtd_control(uint8_t dev_addr);
+ TU_ATTR_ALWAYS_INLINE static inline ehci_qtd_t* qtd_find_free (void);
+-static void qtd_init (ehci_qtd_t* qtd, void const* buffer, uint16_t total_bytes);
++static void qtd_init (ehci_qtd_t* qtd, void const* buffer, uint16_t total_bytes, uint8_t pid, uint8_t data_toggle);
+ 
+ TU_ATTR_ALWAYS_INLINE static inline ehci_link_t* list_get_period_head(uint8_t rhport, uint32_t interval_ms);
+ TU_ATTR_ALWAYS_INLINE static inline ehci_qhd_t* list_get_async_head(uint8_t rhport);
+@@ -148,25 +148,28 @@ TU_ATTR_ALWAYS_INLINE static inline void list_insert (ehci_link_t *current, ehci
+ TU_ATTR_ALWAYS_INLINE static inline void list_remove(ehci_link_t* head, ehci_link_t* prev, ehci_qhd_t* qhd);
+ static void list_remove_qhd_by_addr(ehci_link_t *list_head, uint8_t dev_addr, uint8_t ep_addr);
+ 
++// MSXimus (01/11/2026): bounded status waits. A hung EHCI (seen on the Zynq after hours: USBCMD.PSE=0 never
++// drops USBSTS.PS and USBCMD.RS=0 never gives HCHalted) left the caller spinning here forever. The HC needs
++// 2 ms at most (16 uframes) to follow; 200000 register reads are far more than that on any MCU.
++#define EHCI_WAIT_LOOPS   200000u
++
+ static void ehci_disable_schedule(ehci_registers_t* regs, bool is_period) {
+-  // maybe have a timeout for status
+   if (is_period) {
+     regs->command_bm.periodic_enable = 0;
+-    while(regs->status_bm.periodic_status) {}
++    for (uint32_t n = 0; regs->status_bm.periodic_status && n < EHCI_WAIT_LOOPS; n++) {}
+   } else {
+     regs->command_bm.async_enable = 0;
+-    while(regs->status_bm.async_status) {} // should have a timeout
++    for (uint32_t n = 0; regs->status_bm.async_status && n < EHCI_WAIT_LOOPS; n++) {}
+   }
+ }
+ 
+ static void ehci_enable_schedule(ehci_registers_t* regs, bool is_period) {
+-  // maybe have a timeout for status
+   if (is_period) {
+     regs->command_bm.periodic_enable = 1;
+-    while ( 0 == regs->status_bm.periodic_status ) {}
++    for (uint32_t n = 0; 0 == regs->status_bm.periodic_status && n < EHCI_WAIT_LOOPS; n++) {}
+   } else {
+     regs->command_bm.async_enable = 1;
+-    while( 0 == regs->status_bm.async_status ) {}
++    for (uint32_t n = 0; 0 == regs->status_bm.async_status && n < EHCI_WAIT_LOOPS; n++) {}
+   }
+ }
+ 
+@@ -404,7 +407,9 @@ bool ehci_deinit(uint8_t rhport) {
+   regs->command_bm.run_stop = 0;
+ 
+   // USB Spec: controller has to stop within 16 uframe = 2 frames
+-  while( regs->status_bm.hc_halted == 0 ) {}
++  // MSXimus (01/11/2026): bounded (see EHCI_WAIT_LOOPS). A hung HC never halts: do not block, the caller
++  // (tuh_deinit) goes on and the application resets the controller.
++  for (uint32_t n = 0; regs->status_bm.hc_halted == 0 && n < EHCI_WAIT_LOOPS; n++) {}
+ 
+   return true;
+ }
+@@ -486,8 +491,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
+   ehci_qhd_t* qhd = &ehci_data.control[dev_addr].qhd;
+   ehci_qtd_t* td  = &ehci_data.control[dev_addr].qtd;
+ 
+-  qtd_init(td, setup_packet, 8);
+-  td->pid = EHCI_PID_SETUP;
++  qtd_init(td, setup_packet, 8, EHCI_PID_SETUP, 0);
+ 
+   hcd_dcache_clean(setup_packet, 8);
+ 
+@@ -519,11 +523,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *
+     }
+ 
+     qtd = qtd_control(dev_addr);
+-    qtd_init(qtd, buffer, buflen);
+-
+     // first data toggle is always 1 (data & setup stage)
+-    qtd->data_toggle = 1;
+-    qtd->pid = dir ? EHCI_PID_IN : EHCI_PID_OUT;
++    qtd_init(qtd, buffer, buflen, dir ? EHCI_PID_IN : EHCI_PID_OUT, 1);
+   } else {
+     // skip if endpoint is halted
+     TU_VERIFY(!qhd->qtd_overlay.halted);
+@@ -531,8 +532,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *
+     qtd = qtd_find_free();
+     TU_ASSERT(qtd);
+ 
+-    qtd_init(qtd, buffer, buflen);
+-    qtd->pid = qhd->pid;
++    qtd_init(qtd, buffer, buflen, qhd->pid, 0);
+   }
+ 
+   // IN transfer: invalidate buffer, OUT transfer: clean buffer
+@@ -553,6 +553,7 @@ bool hcd_edpt_abort_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
+ 
+   // TODO ISO not supported yet
+   ehci_qhd_t* qhd = qhd_get_from_addr(dev_addr, ep_addr);
++  TU_VERIFY(qhd != NULL); // MSXimus (01/11/2026): endpoint already closed (device removed while aborting)
+   ehci_qtd_t * volatile qtd = qhd->attached_qtd;
+   TU_VERIFY(qtd != NULL); // no queued transfer
+ 
+@@ -569,6 +570,15 @@ bool hcd_edpt_abort_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
+   if (still_active) {
+     // remove TD from QH overlay
+     qhd->qtd_overlay.next.terminate = 1;
++    // MSXimus (22/09/2026): the HC executes from the OVERLAY, not from the qTD we are about to free.
++    // Leaving overlay.active = 1 keeps the aborted IN/OUT retrying forever (a floppy drive that only
++    // NAKs while its motor spins up would later drop its data into a buffer already reused by
++    // someone else). EHCI 4.10.2: with Active=0, Halted=0 and Next.T=1 the QH is idle; the next
++    // qhd_attach_qtd() rewrites Next and the HC advances from there. The schedule is disabled here.
++    qhd->qtd_overlay.active = 0;
++    qhd->qtd_overlay.halted = 0;
++    qhd->qtd_overlay.non_hs_split_state = 0;
++    qhd->qtd_overlay.err_count = 0;
+     hcd_dcache_clean(qhd, sizeof(ehci_qhd_t));
+ 
+     // remove TD from QH software list
+@@ -630,19 +640,33 @@ void port_connect_status_change_isr(uint8_t rhport) {
+ TU_ATTR_ALWAYS_INLINE static inline
+ void qhd_xfer_complete_isr(ehci_qhd_t * qhd) {
+   hcd_dcache_invalidate(qhd, sizeof(ehci_qhd_t)); // HC may have updated the overlay
+-  volatile ehci_qtd_t *qtd_overlay = &qhd->qtd_overlay;
++  ehci_qtd_t * volatile qtd = qhd->attached_qtd;
+ 
+-  // process non-active (completed) QHD with attached (scheduled) TD
+-  if ( !qtd_overlay->active && qhd->attached_qtd != NULL ) {
++  // MSXimus (01/11/2026): the transfer is complete when the HC has RETIRED the attached qTD, i.e. written
++  // its token back with Active = 0 (EHCI 4.10: on completion and on halt, the overlay token goes back to the
++  // qTD). The old test (QH overlay inactive) is also true right after qhd_attach_qtd(): the overlay still
++  // holds the previous transfer until the HC visits the QH and loads the new qTD (up to 8 ms on the
++  // periodic list). An interrupt of ANY other endpoint in that gap completed the new qTD with 0 bytes and
++  // freed it while it was still linked in overlay.next; another endpoint then reused it (qtd_init) and the
++  // HC executed one qTD from two QHs (the hub status endpoint stopped reporting port changes).
++  if (qtd == NULL) {
++    return;
++  }
++  hcd_dcache_invalidate(qtd, sizeof(ehci_qtd_t)); // HC writes back the token when it retires the qTD
++
++  // process retired (completed) TD attached (scheduled) to QHD. MSXimus (01/11/2026): the overlay must be
++  // inactive too, i.e. the HC has also finished writing the QH back; only then may qhd_attach_qtd() touch
++  // overlay.next for the next transfer (a late overlay write-back would otherwise undo it).
++  if ( !qtd->active && !qhd->qtd_overlay.active ) {
+     xfer_result_t xfer_result;
+ 
+-    if ( qtd_overlay->halted ) {
+-      if (qtd_overlay->xact_err || qtd_overlay->err_count == 0 || qtd_overlay->buffer_err || qtd_overlay->babble_err) {
++    if ( qtd->halted ) {
++      if (qtd->xact_err || qtd->err_count == 0 || qtd->buffer_err || qtd->babble_err) {
+         // Error count = 0 often occurs when device disconnected, or other bus-related error
+         // clear halted bit if not caused by STALL to allow more transfer
+         xfer_result = XFER_RESULT_FAILED;
+-        qtd_overlay->halted = false;
+-        TU_LOG3("  QHD xfer err count: %d\r\n", qtd_overlay->err_count);
++        qhd->qtd_overlay.halted = false;
++        TU_LOG3("  QHD xfer err count: %d\r\n", qtd->err_count);
+         // TU_BREAKPOINT(); // TODO skip unplugged device
+       }else {
+         // no error bits are set, endpoint is halted due to STALL
+@@ -652,9 +676,6 @@ void qhd_xfer_complete_isr(ehci_qhd_t * qhd) {
+       xfer_result = XFER_RESULT_SUCCESS;
+     }
+ 
+-    ehci_qtd_t * volatile qtd = qhd->attached_qtd;
+-    hcd_dcache_invalidate(qtd, sizeof(ehci_qtd_t)); // HC may have written back TD
+-
+     uint8_t const dir = (qtd->pid == EHCI_PID_IN) ? 1 : 0;
+     uint32_t const xferred_bytes = qtd->expected_bytes - qtd->total_bytes;
+ 
+@@ -715,6 +736,16 @@ void process_period_xfer_isr(uint8_t rhport, uint32_t interval_ms) {
+ }
+ 
+ //------------- Host Controller Driver's Interrupt Handler -------------//
++// MSXimus (01/11/2026): scan every QH for retired qTDs. Called by hcd_int_handler on USBINT and, as a safety
++// net against a lost interrupt, periodically by the companion's polling loop (usb_host.c). Harmless when
++// nothing completed: a transfer is only reported once its qTD is retired and the QH overlay is inactive.
++void ehci_rescan(uint8_t rhport) {
++  proccess_async_xfer_isr(list_get_async_head(rhport));
++  for ( uint32_t i = 1; i <= FRAMELIST_SIZE; i *= 2 ) {
++    process_period_xfer_isr(rhport, i);
++  }
++}
++
+ void hcd_int_handler(uint8_t rhport, bool in_isr) {
+   (void) in_isr;
+   ehci_registers_t* regs = ehci_data.regs;
+@@ -748,13 +779,12 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
+   // A USB transfer is completed (OK or error)
+   uint32_t const usb_int = int_status & (EHCI_INT_MASK_USB | EHCI_INT_MASK_ERROR);
+   if (usb_int) {
+-    proccess_async_xfer_isr(list_get_async_head(rhport));
+-
+-    for ( uint32_t i = 1; i <= FRAMELIST_SIZE; i *= 2 ) {
+-      process_period_xfer_isr(rhport, i);
+-    }
+-
++    // MSXimus (01/11/2026): acknowledge BEFORE scanning. Acknowledging after the scan also cleared a USBINT
++    // raised by a qTD that the HC retired while the scan was running (past its QH): that completion was
++    // never processed until some other transfer raised USBINT again. With no other traffic (enumeration
++    // right after a controller reset, or an idle hub) the transfer stayed pending forever.
+     regs->status = usb_int; // Acknowledge
++    ehci_rescan(rhport);
+   }
+ 
+   //------------- There is some removed async previously -------------//
+@@ -999,23 +1029,74 @@ TU_ATTR_ALWAYS_INLINE static inline ehci_qtd_t *qtd_find_free(void) {
+   return NULL;
+ }
+ 
+-static void qtd_init(ehci_qtd_t* qtd, void const* buffer, uint16_t total_bytes) {
+-  tu_memclr(qtd, sizeof(ehci_qtd_t));
+-  qtd->used                = 1;
++static void qtd_init(ehci_qtd_t* qtd, void const* buffer, uint16_t total_bytes, uint8_t pid, uint8_t data_toggle) {
++  // MSXimus (01/11/2026): build the qTD in a local copy and publish it word by word, token (Active) LAST.
++  // The old code did memclr + field writes on the live qTD; if the HC still reached it (a qTD freed too
++  // early but still in some overlay.next) it could execute a qTD half written, or follow a next pointer
++  // of 0x00000000 with T=0 to address 0. Now the live qTD is inactive and terminated from the first
++  // store; the HC only sees Active = 1 when everything else is in place.
++  ehci_qtd_t tmp;
++  tu_memclr(&tmp, sizeof(ehci_qtd_t));
++  tmp.used                = 1;
++
++  tmp.next.terminate      = 1; // init to null
++  tmp.alternate.terminate = 1; // not used, always set to terminated
++  tmp.active              = 1;
++  tmp.pid                 = pid;
++  tmp.err_count           = 3; // TODO 3 consecutive errors tolerance
++  tmp.data_toggle         = data_toggle;
++  tmp.int_on_complete     = 1;
++  tmp.total_bytes         = total_bytes;
++  tmp.expected_bytes      = total_bytes;
++
++  tmp.buffer[0] = (uint32_t) buffer;
++  for(uint8_t i=1; i<5; i++) {
++    tmp.buffer[i] |= tu_align4k(tmp.buffer[i - 1] ) + 4096;
++  }
+ 
+-  qtd->next.terminate      = 1; // init to null
+-  qtd->alternate.terminate = 1; // not used, always set to terminated
+-  qtd->active              = 1;
+-  qtd->err_count           = 3; // TODO 3 consecutive errors tolerance
+-  qtd->data_toggle         = 0;
+-  qtd->int_on_complete     = 1;
+-  qtd->total_bytes         = total_bytes;
+-  qtd->expected_bytes      = total_bytes;
++  uint32_t w[8];
++  tu_memcpy_s(w, sizeof(w), &tmp, sizeof(w));
++  volatile uint32_t* d = (volatile uint32_t*) qtd; // volatile stores keep this order
++  d[2] = 0;                                        // token: inactive (word 2)
++  d[0] = w[0];                                     // next: terminated
++  d[1] = w[1];                                     // alternate: terminated, + used / expected_bytes
++  for (uint8_t i = 3; i < 8; i++) {
++    d[i] = w[i];                                   // buffer pointers
++  }
++  d[2] = w[2];                                     // token with Active = 1: the qTD goes live
++}
+ 
+-  qtd->buffer[0] = (uint32_t) buffer;
+-  for(uint8_t i=1; i<5; i++) {
+-    qtd->buffer[i] |= tu_align4k(qtd->buffer[i - 1] ) + 4096;
++//--------------------------------------------------------------------+
++// Application watchdog support
++//--------------------------------------------------------------------+
++
++// MSXimus (01/11/2026): signature of the progress of the periodic split transactions (full/low speed
++// endpoints behind a high speed hub). For every periodic QH in use with FS/LS speed and an active overlay,
++// the HC rewrites FrameTag (overlay buffer[2] bits 4:0), C-prog-mask (buffer[1] bits 7:0) and SplitX (token
++// bit 1) on every start/complete split. If the periodic engine hangs they freeze, so a signature that does
++// not change for seconds while FRINDEX runs means a hung EHCI. *n_active = number of QHs hashed (0 = nothing
++// to judge: no split endpoint is polling). The caller (application) owns the policy.
++uint32_t ehci_split_signature(uint32_t* n_active) {
++  uint32_t sig = 2166136261u; // FNV-1a
++  uint32_t n = 0;
++
++  for (uint32_t i = 0; i < QHD_MAX; i++) {
++    ehci_qhd_t* qhd = &ehci_data.qhd_pool[i];
++    if (!qhd->used || qhd->removing || !qhd_is_periodic(qhd) || qhd->ep_speed == TUSB_SPEED_HIGH) {
++      continue;
++    }
++    hcd_dcache_invalidate(qhd, sizeof(ehci_qhd_t));
++    if (!qhd->qtd_overlay.active) {
++      continue;
++    }
++    uint32_t const v = (qhd->qtd_overlay.buffer[2] & 0x1Fu) | ((qhd->qtd_overlay.buffer[1] & 0xFFu) << 5) |
++                       ((uint32_t) qhd->qtd_overlay.non_hs_split_state << 13) | (i << 16);
++    sig = (sig ^ v) * 16777619u;
++    n++;
+   }
++
++  *n_active = n;
++  return sig;
+ }
+ 
+ #endif
+diff --git a/src/portable/ehci/ehci_api.h b/src/portable/ehci/ehci_api.h
+index 6e3ddfb..f1b95fe 100644
+--- a/src/portable/ehci/ehci_api.h
++++ b/src/portable/ehci/ehci_api.h
+@@ -22,6 +22,12 @@ bool ehci_init(uint8_t rhport, uint32_t capability_reg, uint32_t operatial_reg);
+ // De-initialize EHCI driver
+ bool ehci_deinit(uint8_t rhport);
+ 
++// MSXimus (01/11/2026): progress signature of the periodic split transactions, for an application watchdog
++uint32_t ehci_split_signature(uint32_t* n_active);
++
++// MSXimus (01/11/2026): scan all QHs for retired qTDs (safety net against a lost USBINT, polled hosts)
++void ehci_rescan(uint8_t rhport);
++
+ #ifdef __cplusplus
+  }
+ #endif

@@ -1,0 +1,30 @@
+diff --git a/geo3d/rom/build_rom.py b/geo3d/rom/build_rom.py
+index c55691f..0f11153 100644
+--- a/geo3d/rom/build_rom.py
++++ b/geo3d/rom/build_rom.py
+@@ -112,6 +112,7 @@ import modplay  # noqa: E402
+ import music  # noqa: E402
+ import showcase  # noqa: E402
+ from gen_face_tables import palette as logo_palette  # noqa: E402
++from gen_msximus_tables import palette as msximus_palette  # noqa: E402  (MSXimus Z)
+ 
+ BANK = 16384
+ ROM_BANKS = 32                               # the cartridge: 512 KB
+@@ -126,7 +127,7 @@ RAW_SETUP_FRAMES = True
+ # stays raw too: decoded, the black screens would last 0.3-0.5 s longer
+ # (crawl 0.75 -> 1.23 s, panzoom 0.42 -> 0.67 s, flyin 0.65 -> 1.02 s).
+ RAW_SETUP = True
+-LOOPS = {"wire": 2, "faces": 2, "tex": 2, "panzoom": 2, "flyin": 2}
++LOOPS = {"wire": 2, "faces": 2, "msximus": 2, "tex": 2, "panzoom": 2, "flyin": 2}
+ # The frames whose length an upload sets, not PACE (besides each demo's frame
+ # 0, the black screen behind its setup): tex's frame 1, its textures. An
+ # EAGER starts each of them and each demo's frame 0: while the MOD plays,
+@@ -881,6 +882,8 @@ def main():
+     demos.append(("wire", logo_pal, s, b, LOOPS["wire"]))
+     s, b = captured("geo3d_faces_demo.asm", "GEO3DF.COM")
+     demos.append(("faces", logo_pal, s, b, LOOPS["faces"]))
++    s, b = captured("geo3d_msximus_demo.asm", "GEO3DM88.COM")   # MSXimus Z: "MSXIMUS" en bloques
++    demos.append(("msximus", msximus_palette()[1], s, b, LOOPS["msximus"]))
+     s, b = captured("geo3d_tex_demo.asm", "GEO3DT.COM")
+     demos.append(("tex", logo_pal, s, b, LOOPS["tex"]))
+     sh, _, _, _ = showcase.scene_panzoom()

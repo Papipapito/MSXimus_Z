@@ -1,0 +1,1547 @@
+// ============================================================================
+// YMF278B.sv — motor PCM/wavetable del OPL4 (MoonSound) para MSXimus (_89)
+//
+// Origen: srg320/Arcade-PsikyoSH2_MiSTer rtl/PSH2/YMF278B.sv (jun-2026),
+// usado con permiso explicito del autor ("You can use the code in any form",
+// correo 2026-07-13). Derivado del ymf278b.cpp de MAME (BSD-3-Clause,
+// R. Belmont / Olivier Galibert / hap) — se conserva la licencia BSD-3 con
+// esos titulares, como se acordo con srg320.
+//
+// Solo esta implementada la parte PCM (24 slots); el FM del YMF278B es un
+// stub (OPL3_DO=0) — en MSXimus el FM lo lleva opl4fm.v (gtaylormb/opl3).
+//
+// Cambios MSXimus respecto al original:
+//  - Los 7 modulos RAM Altera (altsyncram/altdpram) reescritos como
+//    inferencia Verilog pura conservando la latencia exacta:
+//      altsyncram (addr_reg_b=CLOCK0, outdata=UNREGISTERED) ->
+//        direccion de lectura registrada cada CLK, Q combinacional.
+//      altdpram MLAB (todo UNREGISTERED) -> lectura combinacional.
+//  - Nada mas: la logica del motor esta INTACTA.
+//
+// Este .sv es la FUENTE mantenida; el build usa ymf278b_gowin.v generado
+// con sv2v (ver regen en fpga/opl4wave/convert.sh). NO editar el .v a mano.
+// ============================================================================
+
+// synopsys translate_off
+`define SIM
+// synopsys translate_on
+
+module YMF278B
+(
+	input              CLK,
+	input              RST_N,
+	input              EN,
+	
+	input              CE,
+	
+	input      [ 2: 0] A,
+	input      [ 7: 0] DI,
+	output     [ 7: 0] DO,
+	input              RD_N,
+	input              WR_N,
+	input              CS_N,
+	input              IC_N,
+	
+	output             IRQ_N,
+	
+	output     [20: 0] MA,
+	input      [ 7: 0] MDI,
+	output     [ 7: 0] MDO,
+	output             MRD_N,
+	output             MWR_N,
+	output     [ 9: 0] MCS_N,
+	output     [ 4: 0] MEM_SLOT,   // _107: slot dueno del fetch en curso (OP3)
+	output     [ 5: 0] MIX_FM,     // _110: atenuacion F8 (el FM real vive fuera)
+	
+	output     [15: 0] OUT0_L,
+	output     [15: 0] OUT0_R,
+	output     [15: 0] OUT1_L,
+	output     [15: 0] OUT1_R,
+	output     [15: 0] OUT2_L,
+	output     [15: 0] OUT2_R,
+	
+	input      [ 2: 0] SND_EN,
+
+	// MSXimus: la proxima CE sera CYCLE1_CE (la ventana donde el motor
+	// muestrea MDI y consume MEM_RD/MEM_WR). El pegamento congela SOLO esa
+	// CE si el fetch DDR3 aun esta en vuelo — alineacion exacta, sin contar
+	// CEs desde fuera (el divisor avanza con los mismos CE que lee el gate).
+	output             CYCLE1_NEXT
+	
+`ifdef DEBUG
+                      ,
+	output             ATTACK_DBG,
+	output             DECAY1_DBG,
+	output             DECAY2_DBG,
+	output             RELEASE_DBG,
+	output signed [15:0] LVL_DBG,
+	output signed [15:0] PAN_L_DBG,
+	output signed [15:0] PAN_R_DBG
+`endif
+);
+
+	import YMF278B_PKG::*;
+	
+	bit          NEW2;
+	bit  [ 7: 0] TEST0;
+	bit  [ 7: 0] TEST1;
+	bit  [ 4: 0] MEMMODE;
+	bit  [21: 0] MEMADDR;
+	bit  [ 7: 0] MEMDAT;
+	bit  [ 5: 0] MIXFM;
+	bit  [ 5: 0] MIXPCM;
+	bit          LD,LD2,BUSY,BUSY2;
+
+	OP2_t        OP2;
+	OP3_t        OP3;
+	OP4_t        OP4;
+	OP5_t        OP5;
+	OP6_t        OP6;
+	OP7_t        OP7;
+		
+	bit  [21: 0] WD_ADDR;
+	bit          WD_READ;
+	
+	bit  [21: 0] MEM_A;
+	bit  [ 7: 0] MEM_D;
+	bit  [ 7: 0] MEM_Q;
+	bit          MEM_WR;
+	bit          MEM_RD;
+	
+	bit  [ 7: 0] REG_A;
+	bit  [ 7: 0] REG_D;
+	bit  [ 7: 0] REG_Q;
+	bit          REG_WR;
+	bit          REG_RD;
+	
+	wire         RES_N = IC_N;
+	
+	bit          CLK_RES;
+	always @(posedge CLK) begin
+		bit          RST_N_OLD;
+	
+		if (CE) begin
+			RST_N_OLD <= RST_N;
+			CLK_RES <= RST_N & ~RST_N_OLD;
+		end
+	end
+	
+	bit  [ 1: 0] CLK_DIV;
+	bit  [ 2: 0] CYCLE_NUM;
+	always @(posedge CLK) begin
+		if (CLK_RES) begin
+			CLK_DIV <= '0;
+			CYCLE_NUM <= '0;
+		end
+		else if (CE) begin
+			CLK_DIV <= CLK_DIV + 2'd1;
+			if (CLK_DIV == 2'd3) 
+				CYCLE_NUM <= CYCLE_NUM + 3'd1;
+		end 
+	end
+	
+	wire SLOT0_EN = (CYCLE_NUM[2:1] == 2'b01);
+	wire SLOT1_EN = (CYCLE_NUM[2:1] == 2'b11);
+	
+	wire CYCLE0_CE = ~CYCLE_NUM[0] & CLK_DIV == 2'd3 & CE;
+	wire CYCLE1_CE =  CYCLE_NUM[0] & CLK_DIV == 2'd3 & CE;
+	// MSXimus: estado del divisor DESPUES del CE de este ciclo (look-ahead):
+	// el que decide el proximo CE fuera del chip lee este mismo flanco.
+	wire [1:0] MSX_DIV_NXT = (CE)                    ? CLK_DIV + 2'd1   : CLK_DIV;
+	wire [2:0] MSX_CYC_NXT = (CE && CLK_DIV == 2'd3) ? CYCLE_NUM + 3'd1 : CYCLE_NUM;
+	assign CYCLE1_NEXT = MSX_CYC_NXT[0] & (MSX_DIV_NXT == 2'd3);
+	wire SLOT0_CE = SLOT0_EN & CYCLE1_CE;
+	wire SLOT1_CE = SLOT1_EN & CYCLE1_CE;
+		
+	bit  [ 4: 0] EVOL_RA,AM_RA,SA_RA,FNUM_RA,LFO_RA;
+	always_comb begin
+		casex (CYCLE_NUM[2:1])
+			2'b0x: begin
+				SA_RA = OP2.SLOT;//OP2
+				FNUM_RA = SLOT;//OP1
+				AM_RA = SLOT;//OP1
+				EVOL_RA = OP2.SLOT;//OP2
+				LFO_RA = SLOT;//OP1
+			end
+			2'b1x: begin
+				SA_RA = OP2.SLOT;//OP2
+				FNUM_RA = OP4.SLOT;//OP4
+				AM_RA = OP4.SLOT;//OP4
+				EVOL_RA = OP4.SLOT;//OP4
+				LFO_RA = OP4.SLOT;//OP4
+			end
+		endcase
+	end
+	
+	//Operation 1: PLFO, PG, KEY ON/OFF
+	bit          REG_KB[24],REG_LOAD[24];
+	bit  [ 4: 0] SLOT;
+	bit          RST;
+	bit  [ 3: 0] OP1_OCT;
+	bit          OP1_PREVERB;
+	bit  [ 9: 0] OP1_FNUM;
+	bit  [ 2: 0] OP1_LFO,OP1_VIB;
+	bit          OP1_LFORST;
+	bit  [ 8: 0] OP1_WTN;
+	bit  [ 3: 0] OP1_LOAD_POS;
+	always @(posedge CLK or negedge RST_N) begin
+		bit  [17: 0] OP1_LFO_CNT;   // 16/10/2026: acumulador del LFO (antes divisor de 10 bits + contador de 8)
+		bit          REG_KB_OLD[24];
+		bit  [ 7: 0] PLFO_WAVE;
+		bit  [22: 0] PHASE;
+		bit  [17: 0] NEW_LFO_CNT;
+		bit  [ 3: 0] NEW_LOAD_POS;
+		
+		if (!RST_N) begin
+			{OP1_OCT,OP1_FNUM} <= '0;
+			{OP1_LFO,OP1_VIB} <= '0;
+			OP1_LFORST <= 0;
+			OP1_WTN <= '0;
+			REG_KB <= '{24{1'b0}};
+			REG_KB_OLD <= '{24{1'b0}};
+			REG_LOAD <= '{24{1'b0}};
+			SLOT <= '0;
+			RST <= 1;
+			OP2 <= OP2_RESET;
+		end else if (!RES_N) begin
+			{OP1_OCT,OP1_FNUM} <= '0;
+			{OP1_LFO,OP1_VIB} <= '0;
+			OP1_LFORST <= 0;
+			OP1_WTN <= '0;
+			REG_KB <= '{24{1'b0}};
+			REG_KB_OLD <= '{24{1'b0}};
+			REG_LOAD <= '{24{1'b0}};
+			SLOT <= '0;
+			RST <= 1;
+			OP2 <= OP2_RESET;
+		end else begin
+			if (CYCLE0_CE) begin
+				case (CYCLE_NUM[2:1])
+					2'b00: begin
+						{OP1_OCT,OP1_PREVERB,OP1_FNUM} <= REG_FNUM_Q[15:1];
+						{OP1_LFO,OP1_VIB} <= REG_LFO_Q[5:0];
+						// 15/10/2026: el reset del LFO (68h+slot bit 5) sale del PAN de ESTE slot (REG_DM_Q: 8o paso del barrido, con la
+						// direccion de OP1 como WTN). Antes salia de REG_PAN_Q, leido con OP6.SLOT = SLOT-6: el reset caia en el slot k+6.
+						OP1_LFORST <= REG_DM_Q[5];
+						OP1_WTN <= {REG_FNUM_Q[0],REG_WTN_Q};
+						{OP1_LOAD_POS,OP1_LFO_CNT} <= LFO_RAM_Q;
+					end
+				endcase
+			end
+			
+			//Key on/off, header load
+			if (CYCLE1_CE) begin
+				if (REG_PAN_SEL && REG_WR) begin
+					REG_KB[REG_A[4:0] - 5'h8] <= REG_D[7];
+				end
+				if (REG_WTN_SEL && REG_WR) begin
+					REG_LOAD[REG_A[4:0] - 5'h8] <= 1;
+				end
+			end
+			if (SLOT1_CE) begin
+				KEY_RAM_D[1:0] <= '0;
+				if (REG_KB[SLOT] && !REG_KB_OLD[SLOT]) begin
+					KEY_RAM_D[0] <= 1;
+				end
+				if (!REG_KB[SLOT] && REG_KB_OLD[SLOT]) begin
+					KEY_RAM_D[1] <= 1;
+				end
+				REG_KB_OLD[SLOT] <= REG_KB[SLOT];
+				
+				if (REG_LOAD[SLOT]) REG_LOAD[SLOT] <= 0;
+			end
+			
+			PLFO_WAVE <= VIBCalc(OP1_LFO_CNT[17:10], OP1_VIB);
+			PHASE = PhaseCalc(OP1_FNUM, OP1_OCT, PLFO_WAVE);
+			
+			if (SLOT1_CE) begin
+				OP2.SLOT <= SLOT;
+				OP2.RST <= RST;
+				OP2.KON <= KEY_RAM_Q[0];
+				OP2.KOFF <= KEY_RAM_Q[1];
+				OP2.LOAD <= KEY_RAM_Q[2];
+				OP2.PHASE <= PHASE;
+				OP2.WTN <= OP1_WTN;
+				OP2.LOAD_POS <= OP1_LOAD_POS;
+
+				SLOT <= SLOT + 5'd1;
+				if (SLOT == 5'd23) begin
+					SLOT <= '0;
+					RST <= 0;
+				end
+			end
+			
+			//LFO
+			if (SLOT1_CE) begin				
+				// 16/10/2026: acumulador de 18 bits con el paso por muestra de openMSX (LFOStep); con el bit 5 del 68h+slot
+				// a 1 (OP1_LFORST) el contador se mantiene a 0 (openMSX: lfo_active = false, lfo_cnt = 0).
+				NEW_LFO_CNT = OP1_LFORST ? 18'd0 : (OP1_LFO_CNT + {12'd0,LFOStep(OP1_LFO)});
+				
+				if (KEY_RAM_Q[2])
+					NEW_LOAD_POS = OP1_LOAD_POS + 4'd1;
+				else
+					NEW_LOAD_POS = '0;
+				
+				KEY_RAM_D[2] <= KEY_RAM_Q[2];
+				if (NEW_LOAD_POS == 4'd12) KEY_RAM_D[2] <= 0;
+				else if (REG_LOAD[SLOT]) KEY_RAM_D[2] <= 1;
+				
+				LFO_RAM_D <= {NEW_LOAD_POS,NEW_LFO_CNT};
+			end
+		end
+	end
+	
+	bit  [ 2:0] KEY_RAM_D;
+	bit  [ 2:0] KEY_RAM_Q;
+		OPL4_KEY_RAM KEY_RAM(CLK, OP2.SLOT, KEY_RAM_D, SLOT1_CE, SLOT, KEY_RAM_Q);
+	
+	bit  [21:0] LFO_RAM_D;
+	bit  [21:0] LFO_RAM_Q;
+	OPL4_LFO_RAM LFO_RAM(CLK, OP2.SLOT, LFO_RAM_D, SLOT1_CE, LFO_RA, LFO_RAM_Q);
+
+	
+	//Operation 2: MD read, ADP
+	bit  [ 1: 0] OP2_DATA_BIT;
+	bit  [21: 0] OP2_SA;
+	bit  [15: 0] OP2_LA;
+	bit  [15: 0] OP2_EA;	
+	always @(posedge CLK or negedge RST_N) begin
+		EGState_t    OP2_EST;	//Current envelope state
+		bit  [ 9: 0] OP2_EVOL;	//Current envelope volume
+		bit  [ 8: 0] PHASE_INT;	//New phase integer
+		bit  [13: 0] PHASE_FRAC;	//New phase fractional
+		bit  [13: 0] CUR_PHASE_FRAC;//Current phase fractional
+		bit          CUR_PHASE_OVF,CUR_PHASE_SKIP;//El paso anterior avanzo la posicion (muestra nueva) / 2 o mas
+		bit  [15: 0] CUR_SO;		//Sample offset integer
+		bit  [15: 0] NEXT_SO;
+		bit  [15: 0] NEW_SAO;
+		bit          COMP;
+		bit          ALLOW;
+		
+		if (!RST_N) begin
+			OP3 <= OP3_RESET;
+			OP2_DATA_BIT <= '0;
+			OP2_SA <= '0;
+			OP2_LA <= '0;
+			OP2_EA <= '0;
+			WD_READ <= 0;
+		end else if (!RES_N) begin
+			OP3 <= OP3_RESET;
+			OP2_DATA_BIT <= '0;
+			OP2_SA <= '0;
+			OP2_LA <= '0;
+			OP2_EA <= '0;
+			WD_READ <= 0;
+		end else begin
+			if (CYCLE0_CE) begin
+				// _106: relocacion wavetblhdr (canon openMSX/MAME): las ondas
+				// >=384 (RAM) llevan su tabla de cabeceras en wavetblhdr*0x80000
+				// (reg 02 bits 4:2 = MEMMODE[4:2]); sin esto MBWave/Bombaman y
+				// cualquier musica con instrumentos propios leian cabeceras de
+				// la YRW801 (wave*12 siempre). WTN>=384 <=> WTN[8:7]==11 y
+				// (WTN-384) == WTN[6:0].
+				{OP2_DATA_BIT,OP2_SA} <= OP2.LOAD ? {2'b00 ,
+					((OP2.WTN[8:7] == 2'b11 && MEMMODE[4:2] != 3'd0)
+					 ? {MEMMODE[4:2],19'd0} + {12'b000000000000,OP2.WTN[6:0],3'b000} + {13'b0000000000000,OP2.WTN[6:0],2'b00}
+					 : {10'b0000000000,OP2.WTN,3'b000} + {11'b00000000000,OP2.WTN,2'b00})} + OP2.LOAD_POS : REG_SA_Q;
+				OP2_LA <= REG_LA_Q;
+				OP2_EA <= ~(REG_EA_Q) + 16'd1;
+				case (CYCLE_NUM[2:1])
+					2'b00: begin
+						{OP2_EST,OP2_EVOL} <= EVOL_RAM_Q;
+					end
+				endcase
+			end
+		
+			CUR_SO = OP2.KON ? '0 : SO_RAM_Q;
+			
+			//Phase accum
+			if (OP2.RST || OP2.LOAD)
+				{PHASE_INT,PHASE_FRAC} = '0;
+			else
+				{PHASE_INT,PHASE_FRAC} = {9'b000000000,CUR_PHASE_FRAC} + OP2.PHASE;
+			NEXT_SO = CUR_SO + {7'b0000000,PHASE_INT};
+			
+			{CUR_PHASE_SKIP,CUR_PHASE_OVF,CUR_PHASE_FRAC} = OP2.KON ? '0 : PHASE_FRAC_RAM_Q;
+						
+			ALLOW = 1;
+			if (SLOT1_CE) begin
+				//Sample offset
+				if (OP2.RST || OP2.LOAD) begin
+					NEW_SAO = '0;
+					ALLOW = 0;
+				// 16/10/2026 (Z1.2.10, revision): slot ocioso = EVOL >= 280h fuera del ataque, el EG_OFF de openMSX (que deja de
+				// leer memoria: generateChannels se salta los slots en OFF). Antes era EVOL >= 3C0h; con la envolvente parada en
+				// 280h ese umbral ya no se alcanza y los slots soltados (y los 24 desde el reset) seguian avanzando el puntero y
+				// pidiendo muestras sin fin: con notas agudas el motor se frenaba (24 slots soltados a OCT 3: 36,7 us por muestra
+				// en vez de 22,675 con una DDR3 de 20-24 ciclos; banco run_idlefetch.sh). Fuera del ataque EVOL no baja de 280h
+				// una vez alli, y el KEY ON vuelve a poner la posicion a 0.
+				end else if (OP2_EVOL >= 10'h280 && OP2_EST != EST_ATTACK && !OP2.KON) begin
+					NEW_SAO = '0;
+					ALLOW = 0;
+				end else begin
+					NEW_SAO = NEXT_SO;
+					if (NEXT_SO >= OP2_EA) begin
+						NEW_SAO = NEXT_SO + (OP2_LA - OP2_EA);
+					end
+				end
+				SO_RAM_D <= NEW_SAO;
+				
+				OP3.SLOT <= OP2.SLOT;
+				OP3.RST <= OP2.RST;
+				OP3.KON <= OP2.KON;
+				OP3.KOFF <= OP2.KOFF;
+				OP3.LOAD <= OP2.LOAD;
+				OP3.LOAD_POS <= OP2.LOAD_POS;
+				OP3.ALLOW <= ALLOW;
+				OP3.SO <= OP2.LOAD ? 16'h0000 : CUR_SO;
+//				OP3.MOD <= MDCalc(SOUSX, SOUSY, OP2_SCR4.MDL);
+				OP3.PHASE_OVF <= OP2.LOAD ? 1'b0 : CUR_PHASE_OVF;
+				OP3.PHASE_SKIP <= OP2.LOAD ? 1'b0 : CUR_PHASE_SKIP;
+				OP3.PHASE_FRAC <= OP2.LOAD ? 14'h0000 : CUR_PHASE_FRAC;
+				
+				WD_SA <= OP2_SA;
+				WD_DATA_LEN <= OP2_DATA_BIT;
+				WD_READ <= ALLOW | OP2.LOAD;
+				
+				PHASE_FRAC_RAM_D <= ALLOW ? {|PHASE_INT[8:1],|PHASE_INT,PHASE_FRAC} : '0;
+			end
+		end
+	end
+	bit [15:0] SO_RAM_D;
+	bit [15:0] SO_RAM_Q;
+		OPL4_SO_RAM SO_RAM(CLK, OP3.SLOT, SO_RAM_D, SLOT1_CE, OP2.SLOT, SO_RAM_Q);
+	
+	bit  [15:0] PHASE_FRAC_RAM_D;
+	bit  [15:0] PHASE_FRAC_RAM_Q;
+		OPL4_PHASE_RAM PHASE_FRAC_RAM(CLK, OP3.SLOT, PHASE_FRAC_RAM_D, SLOT1_CE, OP2.SLOT, PHASE_FRAC_RAM_Q);
+	
+	//Operation 3:  
+	bit  [21: 0] WD_SA;
+	bit  [ 1: 0] WD_DATA_LEN;
+	
+	wire [21: 0] MOD_PHASE_CURR = /*OP3.MOD +*/ {16'h0000,OP3.PHASE_FRAC[13:8]};
+	wire [15: 0] MOD_PHASE_INTEGER = MOD_PHASE_CURR[21:6];
+	wire [16: 0] SO_MOD = {1'b0,OP3.SO + (!CYCLE_NUM[2] ? 16'd0 : 16'd1)} /*+ {MOD_PHASE_INTEGER[15],MOD_PHASE_INTEGER}*/;
+	wire [21: 0] SO_MOD_BY_1 = {{5{SO_MOD[16]}},SO_MOD};
+	wire [21: 0] SO_MOD_BY_1_5 = {{5{SO_MOD[16]}},SO_MOD} + {{6{SO_MOD[16]}},SO_MOD[16:1]};
+	wire [21: 0] SO_MOD_BY_2 = {{4{SO_MOD[16]}},SO_MOD,1'b0};
+	wire [21: 0] WD_OFFS = WD_DATA_LEN == 2'h0 ? SO_MOD_BY_1 : WD_DATA_LEN == 2'h1 ? SO_MOD_BY_1_5 : SO_MOD_BY_2;
+	assign WD_ADDR = WD_SA + WD_OFFS + (!CYCLE_NUM[1] ? 16'd0 : 16'd1);
+	assign MEM_SLOT = OP3.SLOT;   // _107: coherente con WD_SA (latch conjunto)
+	assign MIX_FM = MIXFM;        // _110: reg F8 hacia el mixer del top
+	
+	always @(posedge CLK or negedge RST_N) begin
+		bit  [15: 0] WD;
+		bit          SO0_CURR,SO0_NEXT;
+		
+		if (!RST_N) begin
+			OP4 <= OP4_RESET;
+			OP4_WD <= '0;
+		end else if (!RES_N) begin
+			OP4 <= OP4_RESET;
+			OP4_WD <= '0;
+		end else begin
+			if (CYCLE1_CE) begin
+				case (CYCLE_NUM[2:1])
+					2'h1: begin WD[15:8] <= MEM_D; SO0_CURR <= SO_MOD[0]; end
+					2'h2: WD[7:0] <= MEM_D;
+				endcase
+			end
+			
+			if (SLOT1_CE) begin
+				OP4.SLOT <= OP3.SLOT;
+				OP4.RST <= OP3.RST;
+				OP4.KON <= OP3.KON;
+				OP4.KOFF <= OP3.KOFF;
+				OP4.MODF <= MOD_PHASE_CURR[5:0];
+				OP4.PHASE_OVF <= OP3.PHASE_OVF;
+				OP4.PHASE_SKIP <= OP3.PHASE_SKIP;
+				OP4_WD <= WD;
+				OP4_DATA_LEN <= WD_DATA_LEN;
+				OP4_SO0_CURR <= SO0_CURR;
+				OP4_SO0_NEXT <= SO0_NEXT;
+			end
+		end
+	end
+	
+	//Operation 4: Interpolation, EG, ALFO
+	bit  [15: 0] OP4_WD;
+	bit  [ 1: 0] OP4_DATA_LEN;
+	bit          OP4_SO0_CURR,OP4_SO0_NEXT;
+	
+	// Z1.2.12: interpolacion lineal entre muestras (srg320, Arcade-PsikyoSH2_MiSTer 5e8599ee): el wave se interpola
+	// con la fraccion de fase (MODF) entre la muestra de la posicion y la anterior. Dos RAM de 32x16 guardan, por slot,
+	// las dos ultimas muestras DISTINTAS; solo se escriben cuando la posicion ha avanzado (PHASE_OVF) o en el KEY ON.
+	// La salida va una muestra retrasada respecto del puntero (sin efecto audible). En el KEY ON no hay muestra anterior:
+	// la historia se llena con la primera (si no, la primera muestra de la nota saldria con la de la nota anterior). Si la
+	// posicion salta 2 (pitch entre x1 y x3; el motor solo lee la muestra de la posicion), la anterior contigua no se leyo
+	// y se estima como media de la leida antes y la actual; saltos de 3 o mas ya son aliasing y quedan aproximados.
+	// Formato: 8 bits = byte alto; 12 bits = nibbles (SO0_CURR elige); 16 bits tal cual.
+	wire [15:0] OP4_CURR_WD = OP4_DATA_LEN == 2'b00 ? {OP4_WD[15:8],8'h00} :
+	                          OP4_DATA_LEN == 2'b01 ? (!OP4_SO0_CURR ? {OP4_WD[15:8],OP4_WD[7:4],4'h0} : {OP4_WD[7:0],OP4_WD[11:8],4'h0}) :
+	                                                  OP4_WD;
+	wire [15:0] PWD_Q0,PWD_Q1;
+	wire        PWD_WE = (OP4.PHASE_OVF | OP4.KON) & SLOT1_CE;
+	wire [16:0] PWD_AVG_S = {PWD_Q0[15],PWD_Q0} + {OP4_CURR_WD[15],OP4_CURR_WD};
+	wire [15:0] PWD_NEXT1 = OP4.KON ? OP4_CURR_WD : OP4.PHASE_SKIP ? PWD_AVG_S[16:1] : PWD_Q0;   // anterior si la muestra es nueva
+	OPL4_SO_RAM PWD_RAM0(CLK, OP4.SLOT, OP4_CURR_WD, PWD_WE, OP4.SLOT, PWD_Q0);
+	OPL4_SO_RAM PWD_RAM1(CLK, OP4.SLOT, PWD_NEXT1, PWD_WE, OP4.SLOT, PWD_Q1);
+	wire [15:0] OP4_PREV_WD = (OP4.PHASE_OVF | OP4.KON) ? PWD_NEXT1 : PWD_Q1;
+	
+	bit  [ 3: 0] OP4_AR,OP4_D1R,OP4_D2R,OP4_RR,OP4_RC,OP4_DL;
+	bit  [ 3: 0] OP4_OCT;
+	bit          OP4_FNUM9;
+	bit          OP4_DAMP;	//DAMP (68h+slot bit 6), 14/10/2026
+	bit          OP4_PRVB;	//Pseudo-reverb (38h+slot bit 3), 14/10/2026
+	bit  [ 9: 0] OP4_EVOL;	//Current envelope volume
+	EGState_t    OP4_EST;	//Current envelope state
+	bit  [18: 0] SCNT;		//Sample counter
+	always @(posedge CLK or negedge RST_N) begin
+		if (!RST_N) begin
+			SCNT <= '0;
+		end else if (!RES_N) begin
+			SCNT <= '0;
+		end else begin
+			if (SLOT1_CE) begin
+				if (OP4.SLOT == 5'd23) begin
+					SCNT <= SCNT + 1'd1;
+				end
+			end
+		end
+	end
+	
+	bit  [ 5: 0] EFF_RATE;	//Effective rate
+	bit          EFF_RATE_OVR;	//Effective rate over
+	bit          ENV_STEP;
+	bit  [ 3: 0] ENV_INC;
+	always_comb begin
+		bit  [ 3: 0] RATE;
+		
+		case (OP4_EST)
+			EST_ATTACK: RATE = OP4_AR;	
+			EST_DECAY1: RATE = OP4_D1R;
+			EST_DECAY2: RATE = OP4_D2R;
+			EST_RELEASE: RATE = OP4_RR;
+		endcase
+		if (OP4_EST == EST_RELEASE && OP4.KON) begin
+			RATE = OP4_AR;
+		end else if (OP4_EST != EST_RELEASE && OP4.KOFF) begin
+			RATE = OP4_RR;
+		end
+		{EFF_RATE_OVR,EFF_RATE} = EffRateCalc(RATE, OP4_RC, OP4_OCT, OP4_FNUM9);
+		// 14/10/2026: DAMP y pseudo-reverb como el chip (openMSX YMF278.cc compute_decay_rate; "Damping was verified to
+		// ignore rate correction", pseudo-reverb idem segun grabaciones del chip). Solo D1R/D2R/RR: el ataque no los ve y
+		// KON sobre RELEASE conserva la tasa de AR (el ataque instantaneo se decide con EFF_RATE == 63). Ambos IGNORAN RC/OCT:
+		//  DAMP (68h bit 6): tasa 48 hasta -12 dB (EVOL < 080h) y 63 por debajo (manual: -12 dB a 5,8 ms, -48 a 8,0, -96 a 10,9).
+		//  PRVB (38h bit 3): al llegar a -18 dB (EVOL >= 0C0h) la tasa interna pasa a 20 (= 4*5), sea cual sea D1R/D2R/RR.
+		// EVOL esta en las unidades de dl_tab (32 = 3 dB; 40h = 6 dB, el desplazamiento de VolCalc): -12 dB = 080h, -18 dB = 0C0h.
+		if (OP4_EST != EST_ATTACK && !(OP4_EST == EST_RELEASE && OP4.KON)) begin
+			if (OP4_DAMP) begin
+				EFF_RATE_OVR = 1'b0;
+				EFF_RATE = (OP4_EVOL < 10'h080) ? 6'd48 : 6'd63;
+			end else if (OP4_PRVB && OP4_EVOL >= 10'h0C0) begin
+				EFF_RATE_OVR = 1'b0;
+				EFF_RATE = 6'd20;
+			end
+		end
+		
+		ENV_STEP <= EnvStep(SCNT, EFF_RATE);
+		ENV_INC <= EnvInc(SCNT, EFF_RATE);
+	end
+	
+	bit  [ 7: 0] OP4_LFO_DATA;
+	bit  [ 2: 0] OP4_AM;
+	always @(posedge CLK or negedge RST_N) begin
+		bit  [10: 0] ATTACK_VOL_CALC,DECAY_VOL_CALC;
+		bit signed [10: 0] NOTV,ATK_STEP;
+		bit  [ 9: 0] NEW_EVOL;
+		bit  [ 1: 0] NEW_EST;
+		
+		if (!RST_N) begin
+			OP5 <= OP5_RESET;
+			{OP4_AR,OP4_D1R,OP4_D2R,OP4_RR,OP4_RC,OP4_DL} <= '0;
+			{OP4_OCT,OP4_FNUM9} <= '0;
+			{OP4_DAMP,OP4_PRVB} <= '0;
+			{OP4_EST,OP4_EVOL} <= '0;
+		end else if (!RES_N) begin
+			OP5 <= OP5_RESET;
+			{OP4_AR,OP4_D1R,OP4_D2R,OP4_RR,OP4_RC,OP4_DL} <= '0;
+			{OP4_OCT,OP4_FNUM9} <= '0;
+			{OP4_DAMP,OP4_PRVB} <= '0;
+			{OP4_EST,OP4_EVOL} <= '0;
+		end else begin
+			if (CYCLE0_CE) begin
+				{OP4_AR,OP4_D1R} <= REG_RATE0_Q;
+				{OP4_DL,OP4_D2R} <= REG_RATE1_Q;
+				{OP4_RC,OP4_RR} <= REG_RATE2_Q;
+				OP4_AM <= REG_AM_Q[2:0];
+				OP4_DAMP <= REG_DAMP_Q;
+				case (CYCLE_NUM[2:1])
+					2'b10: begin
+						OP4_OCT <= REG_FNUM_Q[15:12];
+						OP4_FNUM9 <= REG_FNUM_Q[10];
+						OP4_PRVB <= REG_FNUM_Q[11];
+						{OP4_EST,OP4_EVOL} <= EVOL_RAM_Q;
+						OP4_LFO_DATA <= LFO_RAM_Q[17:10];   // 16/10/2026: los 8 bits altos del acumulador del LFO (256 pasos por periodo)
+					end
+				endcase
+			end
+			
+`ifdef DEBUG
+			if (CYCLE1_CE) begin
+				DECAY1_DBG <= 0;
+				DECAY2_DBG <= 0;
+				ATTACK_DBG <= 0;
+				RELEASE_DBG <= 0;
+			end
+`endif
+			if (SLOT1_CE) begin
+				NEW_EVOL = OP4_EVOL;
+				NEW_EST = OP4_EST;
+				
+				// 13/10/2026: ataque canon (openMSX/libvgm, "makes the attack phase's shape match the actual chip"):
+				// env += (~env * inc) >> 4. ENV_INC solo vale 0/1/2/4/8: el producto y el >>4 son un desplazamiento.
+				// Antes, sin el >>4, el ataque terminaba en el primer paso de envolvente para cualquier AR.
+				NOTV = ~{1'b0,OP4_EVOL};
+				ATK_STEP = ENV_INC[3] ? (NOTV >>> 1) : (ENV_INC[2] ? (NOTV >>> 2) : (ENV_INC[1] ? (NOTV >>> 3) : (ENV_INC[0] ? (NOTV >>> 4) : 11'sd0)));
+				ATTACK_VOL_CALC = {1'b0,OP4_EVOL} + (ENV_STEP ? ATK_STEP : 11'd0);
+				DECAY_VOL_CALC = {1'b0,OP4_EVOL} + (ENV_STEP ? {7'b0000000,ENV_INC} : 11'd0);
+				if (OP4.RST) begin
+					NEW_EVOL = 10'h3FF;
+					NEW_EST = EST_RELEASE;
+				end else if (OP4_EST == EST_RELEASE && OP4.KON) begin
+					NEW_EVOL = (EFF_RATE == 6'h3F) ? 10'h000 : 10'h280;   // 13/10/2026: tasa efectiva 63 = ataque instantaneo (openMSX keyOnHelper)
+					NEW_EST = EST_ATTACK;
+`ifdef DEBUG
+					ATTACK_DBG <= 1;
+`endif
+				end else if (OP4_EST != EST_RELEASE && OP4.KOFF) begin
+					NEW_EST = EST_RELEASE;
+`ifdef DEBUG
+					RELEASE_DBG <= 1;
+`endif
+				end else begin
+					case (OP4_EST)
+						EST_ATTACK: begin
+							if (!ATTACK_VOL_CALC[10]) begin
+								NEW_EVOL = ATTACK_VOL_CALC[9:0];
+							end else begin
+								NEW_EVOL = 10'h000;
+							end
+							if (!OP4_EVOL) begin
+								// 16/10/2026: con DL = 0 no hay tramo DECAY1 (openMSX: state = DL ? EG_DEC : EG_SUS); antes se daba
+								// un paso de D1R antes de pasar a DECAY2
+								NEW_EST = (OP4_DL == 4'd0) ? EST_DECAY2 : EST_DECAY1;
+`ifdef DEBUG
+								DECAY1_DBG <= 1;
+`endif
+							end
+						end
+						
+						EST_DECAY1: begin
+							if (!DECAY_VOL_CALC[10]) begin
+								NEW_EVOL = DECAY_VOL_CALC[9:0];
+							end else begin
+								NEW_EVOL = 10'h3FF;
+							end
+							// 15/10/2026: DL a 3 dB por paso y con >=, como openMSX/libvgm (dl_tab: SC(dB) = dB/3*0x20, DL=15 = 93 dB):
+							// el codo es EVOL >= 20h*DL, o sea EVOL[9:5] >= DL (DL=15 -> 1Fh = 3E0h; {&DL,DL} da 5 bits sin mux).
+							// Antes EVOL[9:6] == DL: 6 dB por paso (DL=4 caia a -24 dB, no a -12) y, al ser ==, un DL escrito por debajo
+							// del EVOL actual no se cumplia nunca (la nota seguia a D1R hasta 3FFh).
+							if (OP4_EVOL[9:5] >= {&OP4_DL,OP4_DL}) begin
+								NEW_EST = EST_DECAY2;
+`ifdef DEBUG
+								DECAY2_DBG <= 1;
+`endif
+							end
+						end
+						
+						// 16/10/2026: la envolvente para en 280h (-60 dB, el MAX_ATT_INDEX de openMSX) en DECAY2 y RELEASE; DECAY1 sigue
+						// hasta el DL (openMSX no recorta en EG_DEC: con DL >= 280h el codo se alcanza y el slot queda en OFF, mudo).
+						// Un slot que llega a DECAY2 ya por encima de 280h se queda como esta (EG_OFF); el nivel calla igual.
+						EST_DECAY2: begin
+							if (OP4_EVOL >= 10'h280) begin
+								NEW_EVOL = OP4_EVOL;
+							end else if (DECAY_VOL_CALC >= 11'h280) begin
+								NEW_EVOL = 10'h280;
+							end else begin
+								NEW_EVOL = DECAY_VOL_CALC[9:0];
+							end
+						end
+						
+						EST_RELEASE: begin
+							if (DECAY_VOL_CALC >= 11'h280) begin
+								NEW_EVOL = 10'h280;
+							end else begin
+								NEW_EVOL = DECAY_VOL_CALC[9:0];
+							end
+						end
+					endcase
+				end
+				EVOL_RAM_D <= {NEW_EST,NEW_EVOL};
+				
+				OP5.SLOT <= OP4.SLOT;
+				OP5.RST <= OP4.RST;
+				OP5.KON <= OP4.KON;
+				OP5.KOFF <= OP4.KOFF;
+				OP5.EVOL <= NEW_EVOL;
+				
+				OP5.WD <= Interpolate(OP4_PREV_WD, OP4_CURR_WD, OP4.MODF);
+				
+				OP5.ALFO <= AMCalc(OP4_LFO_DATA, OP4_AM);
+			end
+		end
+	end
+	bit [11:0] EVOL_RAM_D;
+	bit [11:0] EVOL_RAM_Q;
+		OPL4_EVOL_RAM EVOL_RAM(CLK, OP5.SLOT, EVOL_RAM_D, SLOT1_CE, EVOL_RA, EVOL_RAM_Q);
+
+	//Operation 5: Level calculation
+	bit  [ 6: 0] OP5_TL;
+	bit          OP5_LDIR;
+	always @(posedge CLK or negedge RST_N) begin	
+		bit  [ 6: 0] TL_INT;
+		bit  [ 9: 0] TL_FRAC;
+	
+		if (!RST_N) begin
+			OP6 <= OP6_RESET;
+			{OP5_TL,OP5_LDIR} <= '0;
+		end else if (!RES_N) begin
+			OP6 <= OP6_RESET;
+			{OP5_TL,OP5_LDIR} <= '0;
+		end else begin
+			if (CYCLE0_CE) begin
+				{OP5_TL,OP5_LDIR} <= REG_LEVEL_Q;
+			end
+			
+			{TL_INT,TL_FRAC} = TL_RAM_Q;
+			if (SLOT1_CE) begin
+				if (OP5_LDIR) TL_RAM_D <= {OP5_TL,10'h000};
+				else begin
+					// 13/10/2026: sentido de la interpolacion CORREGIDO. Antes TL_INT > destino sumaba y TL_INT < destino
+					// restaba: se alejaba del destino, el TL de 17 bits envolvia y quedaba oscilando 0 <-> 127,7 (patron de
+					// 3 muestras, ganancia 1/0,004/0,004) para siempre tras cada escritura con LD=0. Constantes de openMSX
+					// (YMF278.cc advance()): atenuar = 1 paso de TL cada 27 muestras (+38/1024), subir = cada 13,5 (-76/1024).
+					if (TL_INT < OP5_TL) begin
+						TL_RAM_D <= {TL_INT,TL_FRAC} + 17'd38;
+					end
+					else if (TL_INT > OP5_TL) begin
+						TL_RAM_D <= {TL_INT,TL_FRAC} - 17'd76;
+					end
+					else begin
+						TL_RAM_D <= {TL_INT,10'h000};   // 14/10/2026: al llegar, la fraccion a 0 (el chip trabaja con el TL entero; sin esto quedaban hasta 0,75 pasos = 0,28 dB)
+					end
+				end
+				
+				OP6.SLOT <= OP5.SLOT;
+				OP6.RST <= OP5.RST;
+				OP6.KON <= OP5.KON;
+				OP6.KOFF <= OP5.KOFF;
+				OP6.LEVEL <= LevelAddTLALFO(OP5.EVOL, (TL_INT == 7'h7F) ? 10'h3FF : {1'b0,TL_INT,TL_FRAC[9:8]}, OP5.ALFO);   // 13/10/2026: TL=7Fh = silencio (FFh en el chip)
+				OP6.WD <= OP5.WD;
+			end
+		end
+	end
+	bit [16:0] TL_RAM_D;
+	bit [16:0] TL_RAM_Q;
+		OPL4_TL_RAM TL_RAM(CLK, OP6.SLOT, TL_RAM_D, SLOT1_CE, OP5.SLOT, TL_RAM_Q);
+
+	//Operation 6: Level calculation
+	always @(posedge CLK or negedge RST_N) begin		
+		if (!RST_N) begin
+			OP7 <= OP7_RESET;
+		end else if (!RES_N) begin
+			OP7 <= OP7_RESET;
+		end else begin
+			
+			if (SLOT1_CE) begin
+				OP7.SLOT <= OP6.SLOT;
+				OP7.RST <= OP6.RST;
+				OP7.KON <= OP6.KON;
+				OP7.KOFF <= OP6.KOFF;
+				// 13/10/2026 MARGEN: -15 dB por slot ANTES de acumular, como el chip real (libvgm ymf278b: (smplOut * 0x5A82) >> 17,
+				// "reduce volume by -15 db, should bring it into balance with FM"). Los 24 slots sumaban a plena escala de 16 bits
+				// en un acumulador de 18: la musica densa (MiG) recortaba el 17-21 % de las muestras y 326 sumas envolvian con
+				// cambio de signo (chasquidos). Con -15 dB por slot los 24 caben en 19 bits y el recorte final solo salta en el pico.
+				OP7.SD <= Atten15(VolCalc(OP6.WD, OP6.LEVEL));
+			end
+		end
+	end
+	
+	//Operation 7: 
+	bit  [ 3: 0] OP7_PAN;
+	bit          OP7_CH;
+	bit  [18: 0] ACC_L,ACC_R;   // 13/10/2026: 19 bits; 24 slots * 5793 (= 32768 * 0x5A82 >> 17) = 139 k > 131 k (limite de 18 bits) y < 262 k
+	always @(posedge CLK or negedge RST_N) begin
+		bit [ 4:0] S;
+		bit signed [15:0] TEMP;
+		bit signed [15:0] PAN_L,PAN_R;
+		
+		if (!RST_N) begin
+			OP7_PAN <= '0;
+			ACC_L <= 0;
+			ACC_R <= 0;
+		end else if (!RES_N) begin
+			OP7_PAN <= '0;
+			ACC_L <= 0;
+			ACC_R <= 0;
+		end else begin
+			if (CYCLE0_CE) begin
+				{OP7_CH,OP7_PAN} <= REG_PAN_Q[4:0];
+			end
+			
+			S = OP7.SLOT;
+			TEMP = !OP7_CH ? OP7.SD : '0;
+			PAN_L = PanLCalc(TEMP,OP7_PAN);
+			PAN_R = PanRCalc(TEMP,OP7_PAN);
+			
+			if (SLOT1_CE) begin
+				if (S == 5'd0) begin
+					ACC_L <= {{3{PAN_L[15]}},PAN_L[15:0]};
+					ACC_R <= {{3{PAN_R[15]}},PAN_R[15:0]};
+				end else begin
+					ACC_L <= ACC_L + {{3{PAN_L[15]}},PAN_L[15:0]};
+					ACC_R <= ACC_R + {{3{PAN_R[15]}},PAN_R[15:0]};
+				end
+			end
+			
+`ifdef DEBUG
+			LVL_DBG <= TEMP;
+			PAN_L_DBG <= PAN_L;
+			PAN_R_DBG <= PAN_R;
+`endif
+		end
+	end
+	
+	//Out
+	bit  [15: 0] PCM_L,PCM_R;
+	// 15/10/2026: modo de acceso a memoria (reg 02h bit 0) = salida a 0. El manual del YMF278B (reg 02h) dice "All the channels can not
+	// generate the sound in this mode": el bus de ondas es de la CPU, los slots no leen. Hasta hoy los slots seguian sumando con el WD
+	// congelado (MEM_D no cambia) y la salida era un continuo de ~1700 con un chasquido al entrar y otro al salir. Las envolventes y las
+	// fases siguen corriendo (la musica reanuda donde toca); solo se calla la muestra que sale. MM_SEEN recuerda que hubo modo memoria en
+	// el periodo de muestra actual y MM_HOLD en el anterior: la suma de un periodo lleva datos buscados hasta ~5 slots antes, asi que la
+	// muestra con datos rancios (o parcial) no llega a salir; al soltar el modo salen 2 muestras a 0 (45 us) y despues la salida real.
+	bit          MM_SEEN,MM_HOLD;
+	always @(posedge CLK or negedge RST_N) begin
+		if (!RST_N) begin
+			PCM_L <= '0;
+			PCM_R <= '0;
+			{MM_SEEN,MM_HOLD} <= '0;
+		end else if (!RES_N) begin
+			
+		end else begin
+			if (OP7.SLOT == 5'd0 && CYCLE_NUM[2:1] == 2'b00 && CYCLE1_CE) begin
+				PCM_L <= (!SND_EN[2] || MEMMODE[0] || MM_SEEN || MM_HOLD ? 16'h0000 : TrimWave19(ACC_L));
+				PCM_R <= (!SND_EN[2] || MEMMODE[0] || MM_SEEN || MM_HOLD ? 16'h0000 : TrimWave19(ACC_R));
+				MM_HOLD <= MM_SEEN;
+				MM_SEEN <= 0;
+			end
+			if (MEMMODE[0]) MM_SEEN <= 1;   // despues del borrado de arriba: gana si el modo sigue activo
+		end
+	end
+	
+	//Memory/Registers
+	bit          MEM_WREQ,MEM_RREQ;
+	always @(posedge CLK or negedge RST_N) begin
+		bit         WR_N_OLD,RD_N_OLD,CS_N_OLD;
+		bit [ 1: 0] REG_RD_DELAY;
+		bit         REG_NEW_SEL;
+		bit [ 3: 0] LD_WAIT;
+		bit         MEM_START;
+		
+		if (!RST_N) begin
+			NEW2 <= 0;
+			TEST0 <= '0;
+			TEST1 <= '0;
+			MEMMODE <= '0;
+			MEMADDR <= '0;
+			MEMDAT <= '0;
+			MIXFM <= {3'h3,3'h3};   // 13/10/2026: F8 = 1Bh tras el reset, como el chip y openMSX (FM a -9 dB por lado).
+			                        // Antes '0: en MSXimus RST_N e IC_N son la misma senal y esta rama gana a la de RES_N.
+			MIXPCM <= '0;
+			REG_Q <= '0;
+			{BUSY,BUSY2} <= 0;
+			LD <= 0;
+			LD2 <= 0;
+		end else begin
+			if (!RES_N) begin
+				NEW2 <= 0;
+				TEST0 <= '0;
+				TEST1 <= '0;
+				MEMMODE <= '0;
+				MEMADDR <= '0;
+				MEMDAT <= '0;
+				MIXFM <= {3'h3,3'h3};
+				MIXPCM <= {3'h0,3'h0};
+				LD2 <= 0;
+				MEM_A <= '0;
+				MEM_WR <= 0;
+				MEM_RD <= 0;
+			end else if (CE) begin
+				//Register access
+				if (CYCLE1_CE) begin
+					REG_RD <= 0;
+					REG_WR <= 0;
+					BUSY <= 0;
+				end
+				
+				WR_N_OLD <= WR_N;
+				RD_N_OLD <= RD_N;
+				CS_N_OLD <= CS_N;
+				if (RD_N && !RD_N_OLD && !CS_N_OLD && A == 3'h0) begin
+					if (LD2) LD2 <= 0;
+				end
+				if (!RD_N && RD_N_OLD && !CS_N && A == 3'h5 && NEW2) begin
+					REG_RD <= 1;
+					BUSY <= 1;
+				end
+				if (!WR_N && WR_N_OLD && !CS_N) begin
+					// 13/10/2026: NEW2 es el bit 1 del registro FM 105h, y el chip tiene UN solo latch de
+					// direccion FM: C4h/C6h lo cargan (banco 0/1) y el dato vale igual por C5h que por C7h
+					// ("0C7h is a mirror of the FM data register but use of 0C5h is preferred", doc tecnico
+					// del OPL4). Hasta hoy solo se aceptaba el dato por C7h (A=3) y el latch se borraba con
+					// cualquier escritura: los discos del "MoonBlaster Wave BASIC driver" (OUT C6h,05h +
+					// OUT C5h,03h) no activaban NEW2, el motor ignoraba 7Eh/7Fh y callaban sin error.
+					case (A)
+						3'h0: REG_NEW_SEL <= 0;                 // direccion del banco 0: ya no es 105h
+						3'h2: REG_NEW_SEL <= (DI == 8'h05);     // direccion del banco 1
+						// 15/10/2026: el dato de 105h con el bit 1 a 0 APAGA NEW2 (openMSX: NEW2 es el bit 1 del registro FM 105h,
+						// getNew2() = peekReg(0x105) & 2, y ymfm igual). Antes solo se ponia a 1 y solo lo borraba el reset: un
+						// programa que volvia al modo OPL3 seguia con 7Eh/7Fh abiertos. LD2 no se toca al apagar (es el aviso de
+						// "NEW2 activado" que borra la lectura del status, como el status2 de openMSX).
+						3'h1, 3'h3: if (REG_NEW_SEL) begin NEW2 <= DI[1]; if (DI[1]) LD2 <= 1; end   // dato por C5h o C7h
+						3'h4: if (NEW2) REG_A <= DI;
+						3'h5: if (NEW2) begin
+							REG_D <= DI;
+							REG_WR <= 1;
+							BUSY <= 1;
+						end
+					endcase
+				end
+				
+				if (OP7.SLOT == 5'd23 && SLOT1_CE) begin
+					if (LD_WAIT) LD_WAIT <= LD_WAIT - 4'd1;
+					else LD <= 0;
+				end
+				
+				REG_RD_DELAY[0] <= REG_RD;
+				REG_RD_DELAY[1] <= REG_RD_DELAY[0];
+				if (REG_WR && CYCLE1_CE) begin
+					case (REG_A)
+						8'h00: TEST0 <= REG_D;
+						8'h01: TEST1 <= REG_D;
+						8'h02: MEMMODE[4:0] <= REG_D[4:0];
+						8'h03: MEMADDR[21:16] <= REG_D[5:0]; // MSXimus: 6 bits (el [4:0] original perdia el bit21 = la RAM de muestras en 0x200000+)
+						8'h04: MEMADDR[15:8] <= REG_D;
+						8'h05: MEMADDR[7:0] <= REG_D;
+						8'h06: MEMDAT <= REG_D; 
+						8'hF8: MIXFM <= REG_D[5:0];
+						8'hF9: MIXPCM <= REG_D[5:0];
+						default:;
+					endcase
+					if (REG_WTN_SEL) begin
+						LD <= 1;
+						LD_WAIT <= 4'd12;
+					end
+					if (REG_A == 8'h06) begin MEM_WREQ <= 1; BUSY2 <= 1; end
+					if (REG_A == 8'h05) begin MEM_RREQ <= 1; BUSY2 <= 1; end
+				end
+				if (REG_RD_DELAY == 2'b01) begin
+					// Registros de slot: el dato sale de una RAM de lectura
+					// SINCRONA que corre a CLK (no a CE) y cuyo puerto la CPU
+					// solo tiene mientras dura REG_RD. rt_cpu_d / fl_cpu_d
+					// (mas abajo) dan el dato de ESTA lectura sea cual sea la
+					// fase: asi REG_Q se carga bien a la primera, aqui, y el
+					// pegamento (opl4_pcm, captura al 6o CE) nunca ve el de la
+					// lectura anterior. tb_slotrd lo guarda.
+					if (REG_WTN_SEL) REG_Q <= rt_cpu_d;
+					else if (REG_FNUM0_SEL) REG_Q <= fl_cpu_d;
+					else if (REG_FNUM1_SEL) REG_Q <= fl_cpu_d;
+					else if (REG_LEVEL_SEL) REG_Q <= rt_cpu_d;
+					else if (REG_PAN_SEL) REG_Q <= rt_cpu_d;
+					else if (REG_LFO_SEL) REG_Q <= fl_cpu_d;
+					else if (REG_RATE0_SEL) REG_Q <= rt_cpu_d;
+					else if (REG_RATE1_SEL) REG_Q <= rt_cpu_d;
+					else if (REG_RATE2_SEL) REG_Q <= rt_cpu_d;
+					else if (REG_AM_SEL) REG_Q <= rt_cpu_d;
+					else begin
+						case (REG_A)
+							8'h00: REG_Q <= TEST0;
+							8'h01: REG_Q <= TEST1;
+							8'h02: REG_Q <= {3'b001,MEMMODE};
+							8'h03: REG_Q <= {2'b00,MEMADDR[21:16]};
+							8'h04: REG_Q <= MEMADDR[15:8];
+							8'h05: REG_Q <= MEMADDR[7:0];
+							8'h06: REG_Q <= MEMDAT;
+							8'hF8: REG_Q <= {2'b00,MIXFM};
+							8'hF9: REG_Q <= {2'b00,MIXPCM};
+							default: REG_Q <= '0;
+						endcase
+						// MSXimus: el incremento de lectura va AQUI (al consumir
+						// reg6), no al completarse el fetch — el prefetch del
+						// write de reg5 dejaba MEMADDR corrido +1 y las
+						// ESCRITURAS de reg6 aterrizaban un byte desplazadas
+						// (semantica del chip real segun MAME/openMSX)
+						if (REG_A == 8'h06) begin MEM_RREQ <= 1; BUSY2 <= 1; MEMADDR <= MEMADDR + 22'd1; end
+					end
+				end
+				// (La era v3 remuestreaba aqui el grupo de la BSRAM con
+				// DELAY==10 "un CE despues". DELAY==10 no llega un CE
+				// despues de DELAY==01, sino dos CE despues de la CYCLE1
+				// que borra REG_RD: hasta 10 CE tras el flanco de RD, y el
+				// pegamento captura al 6o => 5 de cada 8 fases devolvian
+				// la lectura ANTERIOR. Ya no hace falta: ver rt_cpu_d.)
+
+				//Memory access
+				if (CYCLE1_CE) begin
+					if (MEM_RD && !MEMMODE[0]) begin
+						MEM_D <= MDI;
+					end
+					if (MEM_RD && MEMMODE[0]) begin
+						MEMDAT <= MDI;      // MSXimus: sin incremento (ver arriba)
+					end
+					if (MEM_WR && MEMMODE[0]) begin
+						MEMADDR <= MEMADDR + 22'd1;
+					end
+					MEM_WR <= 0;
+					MEM_RD <= 0;
+					BUSY2 <= 0;
+				end
+				
+				MEM_START <= CYCLE1_CE;
+				if (MEM_START && WD_READ && !MEMMODE[0]) begin
+					MEM_A <= WD_ADDR;
+					MEM_WR <= 0;
+					MEM_RD <= 1;
+				end
+				else if (MEM_START && (MEM_WREQ || MEM_RREQ) && MEMMODE[0]) begin
+					MEM_A <= MEMADDR;
+					MEM_WR <= MEM_WREQ;
+					MEM_RD <= MEM_RREQ;
+					BUSY2 <= 1;
+					MEM_WREQ <= 0;
+					MEM_RREQ <= 0;
+				end
+			end
+		end
+	end
+	assign MA = MEM_A[20:0];
+	assign MDO = MEMDAT;
+	assign MWR_N = ~MEM_WR;
+	assign MRD_N = ~MEM_RD;
+	assign MCS_N[0] = ~(MEM_A[21:19] ==? 3'b0??);
+	assign MCS_N[1] = ~(MEM_A[21:19] ==? 3'b1??);
+	assign MCS_N[2] = ~(MEM_A[21:19] ==? 3'b00?);
+	assign MCS_N[3] = ~(MEM_A[21:19] ==? 3'b01?);
+	assign MCS_N[4] = ~(MEM_A[21:19] ==? 3'b10?);
+	assign MCS_N[5] = ~(MEM_A[21:19] ==? 3'b11?);
+	assign MCS_N[6] = ~(MEM_A[21:19] == 3'b100);
+	assign MCS_N[7] = ~(MEM_A[21:19] == 3'b101);
+	assign MCS_N[8] = ~(MEM_A[21:19] == 3'b110);
+	assign MCS_N[9] = ~(MEM_A[21:19] == 3'b111);
+
+	
+	// =====================================================================
+	// ERA v3 (sin SSRAM): el grupo SA/LA/EA — 7 campos de 32x8 con la MISMA
+	// direccion de lectura (SA_RA) y de escritura, y SIN acceso de CPU —
+	// deja de ser 7 arrays (1.8K FF + 7 muxes 32:1) y pasa a UNA BSRAM
+	// 256x8 con direccion {campo[2:0], slot[4:0]} y DOS barridos por slot.
+	//
+	// La clave que lo hace seguro es el pipeline: en el slot en que
+	// SLOT==s, las etapas llevan OP2=s-1, OP3=s-2, OP4=s-3. Las escrituras
+	// van SIEMPRE a OP3.SLOT (LOAD, un campo por SLOT0_CE via LOAD_POS
+	// 0..6) o a OP2.SLOT (limpieza en OP2.RST) — NUNCA a las direcciones
+	// que los barridos leen (SLOT y OP4.SLOT): imposible leer rancio.
+	//
+	// MEDIDO EN SIM (sonda probe_sa, 04/08): la direccion consumida es
+	// SLOT-1 durante TODO el slot y EN LAS DOS FASES (OP2.SLOT y OP4.SLOT
+	// valen lo mismo en cada CYCLE0_CE: el mux de fase es vestigial), y
+	// las escrituras LOAD van a OP3.SLOT = SLOT-2 en el SLOT0_CE. Por
+	// tanto: UN SOLO barrido por slot, disparado al final del CYCLE 3,
+	// leyendo {campo, SLOT} — la direccion que se consumira el slot
+	// siguiente. Sin colision por construccion (escrituras a SLOT-2) y
+	// con ~17 clk de margen hasta la frontera (el barrido tarda ~9).
+	// Durante el clear de reset (OP2.RST) los latches se fuerzan a 0: el
+	// original leia en vivo el slot recien borrado (ceros); el barrido
+	// adelantado le habria ensenado el dato pre-borrado una vuelta.
+	// =====================================================================
+	(* syn_ramstyle = "block_ram" *) bit [7:0] sa_mem [0:255];
+	initial for (int si = 0; si < 256; si++) sa_mem[si] = '0;
+	bit [7:0] sa_q  [0:6];     // banco ACTIVO (lo que consumen los Q)
+	bit [7:0] sa_st [0:6];     // staging del barrido; commit en SLOT1_CE
+	// init explicito: sv2v convierte bit->reg (4 estados) y el postproc no
+	// cubre arrays desempaquetados — sin esto arrancan en X y lo propagan
+	initial for (int qi = 0; qi < 7; qi++) begin sa_q[qi] = '0; sa_st[qi] = '0; end
+	bit [2:0] sa_swp, sa_cap, sa_rstf;
+	bit       sa_swp_on, sa_cap_on;
+	bit [7:0] sa_rq;
+
+	// escritura: limpieza de reset (7 campos de OP2.SLOT, uno por clk,
+	// ciclando — el slot dura ~35 clk asi que barre todos de sobra; el
+	// original escribia los 7 arrays a la vez, mismo estado final y los
+	// consumidores estan en reset) > LOAD (un campo por SLOT0_CE)
+	wire       sa_we_load = OP3.LOAD & SLOT0_CE & (OP3.LOAD_POS < 4'd7);
+	wire       sa_we      = OP2.RST | sa_we_load;
+	wire [7:0] sa_waddr   = OP2.RST ? {sa_rstf, OP2.SLOT}
+	                                : {OP3.LOAD_POS[2:0], OP3.SLOT};
+
+	always_ff @(posedge CLK) begin
+		if (sa_we) sa_mem[sa_waddr] <= OP2.RST ? 8'd0 : MEM_D;
+		sa_rstf <= (sa_rstf == 3'd6) ? 3'd0 : sa_rstf + 3'd1;
+
+		// puerto de lectura: el barrido unico ({campo, SLOT}) a STAGING;
+		// el commit staging->activo va en la frontera (SLOT1_CE) para que
+		// los 4 consumos del slot vean el MISMO juego (la primera version
+		// refrescaba en vivo a mitad de slot y c4/c6 veian el siguiente)
+		sa_rq     <= sa_mem[{sa_swp, SLOT}];
+		sa_cap    <= sa_swp;
+		sa_cap_on <= sa_swp_on;
+		if (sa_cap_on)
+			sa_st[sa_cap] <= sa_rq;
+		if (OP2.RST) begin
+			sa_q[0] <= '0; sa_q[1] <= '0; sa_q[2] <= '0; sa_q[3] <= '0;
+			sa_q[4] <= '0; sa_q[5] <= '0; sa_q[6] <= '0;
+		end
+		else if (SLOT1_CE) begin
+			sa_q[0] <= sa_st[0]; sa_q[1] <= sa_st[1]; sa_q[2] <= sa_st[2];
+			sa_q[3] <= sa_st[3]; sa_q[4] <= sa_st[4]; sa_q[5] <= sa_st[5];
+			sa_q[6] <= sa_st[6];
+		end
+
+		if (CYCLE1_CE && CYCLE_NUM == 3'd3) begin
+			sa_swp_on <= 1'b1;  sa_swp <= 3'd0;
+		end
+		else if (sa_swp_on) begin
+			if (sa_swp == 3'd6) sa_swp_on <= 1'b0;
+			else                sa_swp <= sa_swp + 3'd1;
+		end
+	end
+
+	bit [23:0] REG_SA_Q;
+	bit [15:0] REG_LA_Q;
+	bit [15:0] REG_EA_Q;
+	assign REG_SA_Q = {sa_q[0],sa_q[1],sa_q[2]};
+	assign REG_LA_Q = {sa_q[3],sa_q[4]};
+	assign REG_EA_Q = {sa_q[5],sa_q[6]};
+	
+	wire       REG_WTN_SEL = (REG_A >= 8'h08 && REG_A <= 8'h1F);
+	// era v3: WTN vive en la BSRAM unica rt_mem (campo RT_WT)
+	//OPL4_REG_RAM #(5,8) REG_WTN  (CLK, OP4.RST ? OP4.SLOT :                       REG_A[4:0]-5'h08, OP4.RST ? '0 :                    REG_D, OP4.RST ? 1'b1 : (REG_WR & REG_WTN_SEL & CYCLE1_CE), (REG_RD ? REG_A[4:0]-5'h08 : SLOT), REG_WTN_Q);
+	
+	wire       REG_FNUM0_SEL = (REG_A >= 8'h38 && REG_A <= 8'h4F);
+	wire       REG_FNUM1_SEL = (REG_A >= 8'h20 && REG_A <= 8'h37);
+	bit [15:0] REG_FNUM_Q;
+	OPL4_REG_RAM #(5,8) REG_FNUM0(CLK,     RST ?     SLOT :                       REG_A[4:0]-5'h18,     RST ? '0 :                    REG_D,     RST ? 1'b1 : (REG_WR & REG_FNUM0_SEL & CYCLE1_CE), ((REG_RD & REG_FNUM0_SEL) ? REG_A[4:0]-5'h18 : FNUM_RA ), REG_FNUM_Q[15:8]);
+	OPL4_REG_RAM #(5,8) REG_FNUM1(CLK,     RST ?     SLOT :                       REG_A[4:0]-5'h00,     RST ? '0 :                    REG_D,     RST ? 1'b1 : (REG_WR & REG_FNUM1_SEL & CYCLE1_CE), ((REG_RD & REG_FNUM1_SEL) ? REG_A[4:0]-5'h00 : FNUM_RA ), REG_FNUM_Q[7:0]);
+	
+	wire       REG_LEVEL_SEL = (REG_A >= 8'h50 && REG_A <= 8'h67);
+	// era v3: LEVEL vive en la BSRAM unica rt_mem (campo RT_LV)
+	//OPL4_REG_RAM #(5,8) REG_LEVEL(CLK,     RST ?     SLOT :                       REG_A[4:0]-5'h10,     RST ? '0 :                    REG_D,     RST ? 1'b1 : (REG_WR & REG_LEVEL_SEL & CYCLE1_CE), (REG_RD ? REG_A[4:0]-5'h10 : OP5.SLOT ), REG_LEVEL_Q);
+	
+	wire       REG_PAN_SEL = (REG_A >= 8'h68 && REG_A <= 8'h7F);
+	// era v3: PAN vive en la BSRAM unica rt_mem (campo RT_PN)
+	//OPL4_REG_RAM #(5,8) REG_PAN  (CLK,     RST ?     SLOT :                       REG_A[4:0]-5'h08,     RST ? '0 :                    REG_D,     RST ? 1'b1 : (REG_WR & REG_PAN_SEL & CYCLE1_CE), (REG_RD ? REG_A[4:0]-5'h08 : OP7.SLOT ), REG_PAN_Q);
+	
+	wire       REG_LFO_SEL = (REG_A >= 8'h80 && REG_A <= 8'h97);
+	wire       REG_LFO_LOAD  = (OP3.LOAD_POS == 4'h7);
+	bit [ 7:0] REG_LFO_Q;
+	OPL4_REG_RAM #(5,8) REG_LFO  (CLK,     RST ?     SLOT : OP3.LOAD ? OP3.SLOT : REG_A[4:0]-5'h00,     RST ? '0 : OP3.LOAD ? MEM_D : REG_D,     RST ? 1'b1 : OP3.LOAD ? (REG_LFO_LOAD & SLOT0_CE) : (REG_WR & REG_LFO_SEL & CYCLE1_CE), ((REG_RD & REG_LFO_SEL) ? REG_A[4:0]-5'h00 : LFO_RA ), REG_LFO_Q);
+
+	// 15/10/2026 (revision Z1.2.8): el puerto de lectura de cada una de estas tres RAM (FNUM0, FNUM1, LFO) solo pasa a la
+	// CPU si el registro leido es SUYO (REG_RD & su SEL). Antes bastaba REG_RD: la lectura por 7Fh de CUALQUIER registro
+	// (03h, 50h, 70h...) llevaba la direccion de la CPU a las tres y, si el CYCLE0_CE del ciclo 0 o 4 caia dentro, OP1/OP4
+	// cargaban OCT/FNUM9/PRVB, el FNUM entero, el bit 8 del numero de onda (OP1_WTN) y el LFO de OTRO slot (con PRVB y RR=15 y la CPU releyendo 03h/50h/70h sin parar la cola
+	// caia 29 dB de mas: tb_rdmux). rt_mem ya iba condicionada asi (rt_cpurd = REG_RD & rt_sel).
+	// Readback de FNUM/LFO por CPU. La salida de estas RAM solo es la de la
+	// CPU mientras dura REG_RD, y si la CYCLE1 que lo borra cae justo en el
+	// CE siguiente al flanco de RD y despues hay un clk sin CE, la carga de
+	// REG_Q llegaba con el puerto ya devuelto al barrido (~1 % de las
+	// lecturas devolvian el FNUM o el LFO de OTRO slot). fl_cpu_on marca que la
+	// salida de AHORA es de la CPU; fl_cpu_q la retiene cuando deja de serlo.
+	bit       fl_cpu_on;
+	bit [7:0] fl_cpu_q;
+	wire [7:0] fl_rq = REG_FNUM0_SEL ? REG_FNUM_Q[15:8]
+	                 : REG_FNUM1_SEL ? REG_FNUM_Q[7:0] : REG_LFO_Q;
+	always_ff @(posedge CLK) begin
+		fl_cpu_on <= REG_RD;
+		if (fl_cpu_on) fl_cpu_q <= fl_rq;
+	end
+	wire [7:0] fl_cpu_d = fl_cpu_on ? fl_rq : fl_cpu_q;
+	
+	wire       REG_RATE0_SEL = (REG_A >= 8'h98 && REG_A <= 8'hAF);
+	wire       REG_RATE1_SEL = (REG_A >= 8'hB0 && REG_A <= 8'hC7);
+	wire       REG_RATE2_SEL = (REG_A >= 8'hC8 && REG_A <= 8'hDF);
+	wire       REG_AM_SEL    = (REG_A >= 8'hE0 && REG_A <= 8'hF7);
+
+	// =====================================================================
+	// ERA v3: grupo RATE0/1/2 + AM (4 arrays de 32x8 = 1.024 FF + 4 muxes
+	// 32:1) fusionado en UNA BSRAM 128x8 con direccion {campo[1:0],slot} y
+	// UN barrido por slot con doble bufer — el patron del grupo SA/LA/EA.
+	//
+	// MEDIDO con probe_rate.v (0 de 3.744 tramos de slot): OP4.SLOT NO
+	// cambia nunca dentro de un slot y vale SLOT-3, luego el OP4.SLOT del
+	// slot SIGUIENTE es el OP3.SLOT de ahora => el barrido lee
+	// {campo, OP3.SLOT} y el commit va en la frontera (SLOT1_CE). Los 4
+	// consumos por slot (uno por CYCLE0_CE) leian el MISMO valor: el
+	// barrido unico no pierde nada.
+	//
+	// A DIFERENCIA del grupo SA, este tiene escrituras de CPU y readback:
+	//  - escrituras: RST (limpieza, un campo por clk ciclando) > LOAD de
+	//    cabecera (un campo por SLOT0_CE, LOAD_POS 8..11) > CPU. Nunca dos
+	//    a la vez (los SEL son rangos disjuntos).
+	//  - readback: REG_RD roba el puerto de lectura mientras dura (el
+	//    barrido se para; tiene ~17 clk de margen para 4 campos). El dato
+	//    esta en rt_rq un clk despues (rt_cpu_on lo marca) y se retiene en
+	//    rt_cpu_q al siguiente. REG_Q se carga dos CE tras el flanco de RD
+	//    con rt_cpu_d, que escoge entre los dos: dos CE pueden ser solo
+	//    dos clk, y entonces rt_cpu_q todavia guarda la lectura ANTERIOR.
+	// =====================================================================
+	// SIETE campos en UNA BSRAM 256x8 {campo[2:0], slot[4:0]}: RATE0/1/2,
+	// AM, WTN, LEVEL y PAN. Los tres ultimos entran GRATIS en BSRAM (256x8
+	// = 2 Kbit sigue siendo UN primitivo) — critico, porque el presupuesto
+	// esta en 117/118 y no habia sitio para otro bloque.
+	//
+	// MEDIDO con probe_wlp.v (3743/3743 transiciones): SLOT, OP5.SLOT y
+	// OP7.SLOT son estables dentro del slot, y la direccion del slot
+	// SIGUIENTE es (SLOT+1) mod 24, OP4.SLOT y OP6.SLOT respectivamente —
+	// que es justo lo que lee el barrido pre-frontera de cada campo.
+	localparam RT_R0=3'd0, RT_R1=3'd1, RT_R2=3'd2, RT_AM=3'd3,
+	           RT_WT=3'd4, RT_LV=3'd5, RT_PN=3'd6;
+	// 14/10/2026: octavo paso del barrido (no es un campo de la BSRAM): vuelve a leer PAN (campo RT_PN) para el DAMP
+	// (bit 6, que ha de llegar a OP4 con la tasa de su slot). El PAN normal se lee con OP6.SLOT (OP7) y llega tres slots
+	// tarde para la envolvente.
+	// 15/10/2026: este paso lee con la direccion del slot SIGUIENTE (la de WTN), asi REG_DM_Q es el PAN del slot de OP1:
+	// el bit 5 (reset del LFO) se usa alli mismo (OP1_LFORST) y el DAMP (bit 6) baja a OP4 por una cadena de tres FF
+	// que avanza en SLOT1_CE (rt_dp2/3/4: OP2, OP3, OP4), sin RAM nueva.
+	localparam RT_DM=3'd7;
+
+	wire [2:0] rt_fld = REG_RATE0_SEL ? RT_R0 : REG_RATE1_SEL ? RT_R1
+	                  : REG_RATE2_SEL ? RT_R2 : REG_AM_SEL    ? RT_AM
+	                  : REG_WTN_SEL   ? RT_WT : REG_LEVEL_SEL ? RT_LV : RT_PN;
+	wire [4:0] rt_idx = REG_RATE0_SEL ? REG_A[4:0]-5'h18
+	                  : REG_RATE1_SEL ? REG_A[4:0]-5'h10
+	                  : REG_RATE2_SEL ? REG_A[4:0]-5'h08
+	                  : REG_AM_SEL    ? REG_A[4:0]-5'h00
+	                  : REG_WTN_SEL   ? REG_A[4:0]-5'h08
+	                  : REG_LEVEL_SEL ? REG_A[4:0]-5'h10 : REG_A[4:0]-5'h08;
+	wire       rt_sel = REG_RATE0_SEL | REG_RATE1_SEL | REG_RATE2_SEL
+	                  | REG_AM_SEL | REG_WTN_SEL | REG_LEVEL_SEL | REG_PAN_SEL;
+
+	// limpieza de reset serializada: cada campo con SU condicion y SU
+	// direccion — WTN se borra con OP4.RST en OP4.SLOT (no con RST en
+	// SLOT como los otros seis); respetarlo importa.
+	wire       rt_rst_we = (rt_rstf == RT_WT) ? OP4.RST : RST;
+	wire [7:0] rt_rst_ad = (rt_rstf == RT_WT) ? {RT_WT, OP4.SLOT}
+	                                          : {rt_rstf, SLOT};
+	wire       rt_we_load = OP3.LOAD & SLOT0_CE & (OP3.LOAD_POS >= 4'd8)
+	                                            & (OP3.LOAD_POS <= 4'd11);
+	wire       rt_we_cpu  = REG_WR & CYCLE1_CE & rt_sel;
+	// Con SIETE campos en un solo puerto de escritura hay que arbitrar lo
+	// que antes tenia siete puertos: una escritura de CPU puede coincidir
+	// con un paso de la carga de cabecera (ambos piden CYCLE1_CE) y se
+	// perdia. tb_regrd lo cazo (4 de 288, esporadico). La CPU va a un
+	// buffer de UNA plaza y entra en cuanto el puerto queda libre — no
+	// tiene prisa (el siguiente acceso del Z80 esta a microsegundos) y
+	// asi la carga de cabecera nunca cede su turno.
+	wire       rt_cpuw_go = rt_cpuw_p & ~rt_rst_we & ~rt_we_load;
+	wire       rt_we      = rt_rst_we | rt_we_load | rt_cpuw_go;
+	wire [7:0] rt_waddr   = rt_rst_we  ? rt_rst_ad
+	                      : rt_we_load ? {1'b0, OP3.LOAD_POS[1:0], OP3.SLOT}
+	                                   : rt_cpuw_ad;
+	wire [7:0] rt_wdata   = rt_rst_we ? 8'd0 : rt_we_load ? MEM_D : rt_cpuw_dt;
+	wire       rt_cpurd   = REG_RD & rt_sel;
+
+	// direccion del barrido: la que consumira el slot SIGUIENTE
+	wire [4:0] rt_slot_nx = (SLOT == 5'd23) ? 5'd0 : SLOT + 5'd1;
+	// el octavo paso lee el campo PAN (RT_PN) con la direccion del slot SIGUIENTE (la de WTN, alineada con OP1)
+	wire [2:0] rt_swp_fld = (rt_swp == RT_DM) ? RT_PN : rt_swp;
+	wire [4:0] rt_swp_ad  = (rt_swp == RT_WT || rt_swp == RT_DM) ? rt_slot_nx
+	                      : (rt_swp == RT_LV) ? OP4.SLOT
+	                      : (rt_swp == RT_PN) ? OP6.SLOT : OP3.SLOT;
+
+	(* syn_ramstyle = "block_ram" *) bit [7:0] rt_mem [0:255];
+	initial for (int ri = 0; ri < 256; ri++) rt_mem[ri] = '0;
+	bit [7:0] rt_q  [0:7];      // banco ACTIVO (lo que consume el motor)
+	bit [7:0] rt_st [0:7];      // staging del barrido (el indice 7 = RT_DM: se usan los bits 5 (reset del LFO) y 6 (DAMP))
+	bit [7:0] rt_cpu_q;         // dato del readback de CPU
+	initial for (int ri = 0; ri < 8; ri++) begin rt_q[ri] = '0; rt_st[ri] = '0; end
+	initial rt_cpu_q = '0;
+	bit [2:0] rt_swp, rt_cap, rt_rstf;
+	bit       rt_swp_on, rt_cap_on, rt_cpu_on;
+	bit [7:0] rt_rq;
+	bit       rt_cpuw_p;                 // escritura de CPU en espera
+	bit [7:0] rt_cpuw_ad, rt_cpuw_dt;
+	initial begin rt_cpuw_p = 1'b0; rt_cpuw_ad = '0; rt_cpuw_dt = '0; end
+
+	always_ff @(posedge CLK) begin
+		if (rt_we) rt_mem[rt_waddr] <= rt_wdata;
+		rt_rstf <= (rt_rstf == RT_PN) ? 3'd0 : rt_rstf + 3'd1;
+
+		// buffer de la escritura de CPU (ver nota del arbitraje)
+		if (rt_we_cpu) begin
+			rt_cpuw_p  <= 1'b1;
+			rt_cpuw_ad <= {rt_fld, rt_idx};
+			rt_cpuw_dt <= REG_D;
+		end
+		else if (rt_cpuw_go) rt_cpuw_p <= 1'b0;
+
+		// puerto de lectura: la CPU tiene prioridad y roba el ciclo
+		rt_rq     <= rt_mem[rt_cpurd ? {rt_fld, rt_idx} : {rt_swp_fld, rt_swp_ad}];
+		rt_cap    <= rt_swp;
+		rt_cap_on <= rt_swp_on & ~rt_cpurd;
+		rt_cpu_on <= rt_cpurd;
+		if (rt_cpu_on)      rt_cpu_q       <= rt_rq;
+		else if (rt_cap_on) rt_st[rt_cap]  <= rt_rq;
+		// 15/10/2026 (revision Z1.2.8): si el barrido no llega al 8o paso (la CPU robo ciclos leyendo registros de
+		// slot), el slot siguiente NO debe heredar el DAMP del vecino: el staging de RT_DM se borra al confirmar, y
+		// va DESPUES de la captura para ganarle. Un barrido incompleto deja DAMP=0 durante una muestra (antes, el DAMP
+		// rancio del vecino restaba 1-1,8 dB a notas sostenidas con lecturas continuas de la CPU).
+		if (SLOT1_CE) rt_st[RT_DM] <= '0;
+
+		if (RST) begin
+			rt_q[RT_R0] <= '0; rt_q[RT_R1] <= '0; rt_q[RT_R2] <= '0;
+			rt_q[RT_AM] <= '0; rt_q[RT_LV] <= '0; rt_q[RT_PN] <= '0;
+			rt_q[RT_DM] <= '0;
+		end
+		else if (SLOT1_CE) begin
+			rt_q[RT_R0] <= rt_st[RT_R0]; rt_q[RT_R1] <= rt_st[RT_R1];
+			rt_q[RT_R2] <= rt_st[RT_R2]; rt_q[RT_AM] <= rt_st[RT_AM];
+			rt_q[RT_LV] <= rt_st[RT_LV]; rt_q[RT_PN] <= rt_st[RT_PN];
+			rt_q[RT_DM] <= rt_st[RT_DM];
+		end
+		// WTN sigue a OP4.RST, no a RST (como el array original)
+		if (OP4.RST)          rt_q[RT_WT] <= '0;
+		else if (SLOT1_CE)    rt_q[RT_WT] <= rt_st[RT_WT];
+
+		if (CYCLE1_CE && CYCLE_NUM == 3'd3) begin
+			rt_swp_on <= 1'b1;  rt_swp <= 3'd0;
+		end
+		else if (rt_swp_on && !rt_cpurd) begin
+			if (rt_swp == RT_DM) rt_swp_on <= 1'b0;
+			else                 rt_swp <= rt_swp + 3'd1;
+		end
+	end
+
+	// dato del readback de CPU valido desde un clk despues de subir REG_RD
+	wire [7:0] rt_cpu_d = rt_cpu_on ? rt_rq : rt_cpu_q;
+
+	wire [7:0] REG_RATE0_Q = rt_q[RT_R0];
+	wire [7:0] REG_RATE1_Q = rt_q[RT_R1];
+	wire [7:0] REG_RATE2_Q = rt_q[RT_R2];
+	wire [7:0] REG_AM_Q    = rt_q[RT_AM];
+	wire [7:0] REG_WTN_Q   = rt_q[RT_WT];
+	wire [7:0] REG_LEVEL_Q = rt_q[RT_LV];
+	wire [7:0] REG_PAN_Q   = rt_q[RT_PN];
+	wire [7:0] REG_DM_Q    = rt_q[RT_DM];       // PAN del slot de OP1 (8o paso del barrido), 14/10/2026 (15/10: antes el de OP4)
+	bit        rt_dp2, rt_dp3, rt_dp4;          // DAMP (bit 6) del mismo slot, retrasado hasta OP2, OP3 y OP4
+	always_ff @(posedge CLK) begin
+		if (SLOT1_CE) begin
+			rt_dp2 <= REG_DM_Q[6];
+			rt_dp3 <= rt_dp2;
+			rt_dp4 <= rt_dp3;
+		end
+	end
+	wire       REG_DAMP_Q  = rt_dp4;            // DAMP del slot de OP4 (68h+slot bit 6)
+	
+	
+	//OPL3
+	bit  [ 7: 0] OPL3_DO;
+	bit  [15: 0] OPL3_OUT_A;
+	bit  [15: 0] OPL3_OUT_B;
+	bit  [15: 0] OPL3_OUT_C;
+	bit  [15: 0] OPL3_OUT_D;
+	
+	assign OPL3_DO = '0;
+	assign {OPL3_OUT_A,OPL3_OUT_B,OPL3_OUT_C,OPL3_OUT_D} = '0;
+	assign IRQ_N = 1;
+	
+	assign DO = A == 3'h5 ? REG_Q : OPL3_DO | {6'b000000,LD|LD2,BUSY|BUSY2};
+	
+	assign OUT0_L = OPL3_OUT_C;
+	assign OUT0_R = OPL3_OUT_D;
+	
+	assign OUT1_L = PCM_L;
+	assign OUT1_R = PCM_R;
+	
+	assign OUT2_L = MixCalc(PCM_L, MIXPCM[2:0]) + MixCalc(OPL3_OUT_A, MIXFM[2:0]);
+	assign OUT2_R = MixCalc(PCM_R, MIXPCM[5:3]) + MixCalc(OPL3_OUT_B, MIXFM[5:3]);
+	
+endmodule
+
+module OPL4_KEY_RAM
+(
+	input          CLK,
+
+	input  [ 4: 0] WRADDR,
+	input  [ 2: 0] DATA,
+	input          WREN,
+	input  [ 4: 0] RDADDR,
+	output [ 2: 0] Q
+);
+
+	// altdpram MLAB: escritura registrada, LECTURA COMBINACIONAL (async)
+	reg [2:0] mem [0:31];
+	// power-up a 0 (como la MLAB real; en sim evita X)
+	integer ii;
+	initial for (ii = 0; ii < 32; ii = ii + 1) mem[ii] = 0;
+	always @(posedge CLK) if (WREN) mem[WRADDR] <= DATA;
+	assign Q = mem[RDADDR];
+
+endmodule
+
+module OPL4_PHASE_RAM (
+	input          CLK,
+	input  [ 4: 0] WRADDR,
+	input  [15: 0] DATA,
+	input          WREN,
+	input  [ 4: 0] RDADDR,
+	output [15: 0] Q);
+
+	// ERA v3: lectura SINCRONA (dato registrado) => BSRAM SDPB. Antes era
+	// direccion registrada + lectura asincrona (SSRAM), pero Gowin retiro el
+	// SSRAM del GW5AT-60B por un problema de silicio (soporte, 03/08/2026).
+	// Equivalencia: RDADDR es estable >=1 clk antes de cada CE consumidor
+	// (cambia solo en flancos con CE y se consume >=4 clk despues), y
+	// escritura y lectura nunca coinciden en el mismo slot => mismo dato.
+	// De regalo, read-old en colision = la semantica del altsyncram original.
+	(* syn_ramstyle = "block_ram" *) reg [15:0] mem [0:31];
+	// power-up a 0 (como la BSRAM real; en sim evita X)
+	integer ii;
+	initial for (ii = 0; ii < 32; ii = ii + 1) mem[ii] = 0;
+	reg [15:0] rd_q;
+	always @(posedge CLK) begin
+		if (WREN) mem[WRADDR] <= DATA;
+		rd_q <= mem[RDADDR];
+	end
+	assign Q = rd_q;
+
+endmodule
+
+module OPL4_LFO_RAM (
+	input          CLK,
+	input  [ 4: 0] WRADDR,
+	input  [21: 0] DATA,
+	input          WREN,
+	input  [ 4: 0] RDADDR,
+	output [21: 0] Q);
+
+	// ERA v3: lectura SINCRONA => BSRAM SDPB (ver nota en OPL4_PHASE_RAM).
+	// 22 bits > 18 => partido en 18b de BSRAM + 4b en FF (mismas
+	// direcciones): un SDP >18b consume DOS primitivos; asi, UNO + 128 FF.
+	(* syn_ramstyle = "block_ram" *) reg [17:0] mem [0:31];
+	reg [21:18] mem_hi [0:31];
+	// power-up a 0 (como la BSRAM real; en sim evita X)
+	integer ii;
+	initial for (ii = 0; ii < 32; ii = ii + 1) begin mem[ii] = 0; mem_hi[ii] = 0; end
+	reg [17:0] rd_lo;
+	reg [21:18] rd_hi;
+	always @(posedge CLK) begin
+		if (WREN) begin
+			mem[WRADDR]    <= DATA[17:0];
+			mem_hi[WRADDR] <= DATA[21:18];
+		end
+		rd_lo <= mem[RDADDR];
+		rd_hi <= mem_hi[RDADDR];
+	end
+	assign Q = {rd_hi, rd_lo};
+
+endmodule
+
+module OPL4_SO_RAM (
+	input          CLK,
+	input  [ 4: 0] WRADDR,
+	input  [15: 0] DATA,
+	input          WREN,
+	input  [ 4: 0] RDADDR,
+	output [15: 0] Q);
+
+	// ERA v3: lectura SINCRONA => BSRAM SDPB (ver nota en OPL4_PHASE_RAM)
+	(* syn_ramstyle = "block_ram" *) reg [15:0] mem [0:31];
+	// power-up a 0 (como la BSRAM real; en sim evita X)
+	integer ii;
+	initial for (ii = 0; ii < 32; ii = ii + 1) mem[ii] = 0;
+	reg [15:0] rd_q;
+	always @(posedge CLK) begin
+		if (WREN) mem[WRADDR] <= DATA;
+		rd_q <= mem[RDADDR];
+	end
+	assign Q = rd_q;
+
+endmodule
+
+module OPL4_EVOL_RAM (
+	input          CLK,
+	input  [ 4: 0] WRADDR,
+	input  [11: 0] DATA,
+	input          WREN,
+	input  [ 4: 0] RDADDR,
+	output [11: 0] Q);
+
+	// ERA v3: lectura SINCRONA => BSRAM SDPB (ver nota en OPL4_PHASE_RAM)
+	(* syn_ramstyle = "block_ram" *) reg [11:0] mem [0:31];
+	// power-up a 0 (como la BSRAM real; en sim evita X)
+	integer ii;
+	initial for (ii = 0; ii < 32; ii = ii + 1) mem[ii] = 0;
+	reg [11:0] rd_q;
+	always @(posedge CLK) begin
+		if (WREN) mem[WRADDR] <= DATA;
+		rd_q <= mem[RDADDR];
+	end
+	assign Q = rd_q;
+
+endmodule
+
+module OPL4_TL_RAM (
+	input          CLK,
+	input  [ 4: 0] WRADDR,
+	input  [16: 0] DATA,
+	input          WREN,
+	input  [ 4: 0] RDADDR,
+	output [16: 0] Q);
+
+	// ERA v3: lectura SINCRONA => BSRAM SDPB (ver nota en OPL4_PHASE_RAM)
+	(* syn_ramstyle = "block_ram" *) reg [16:0] mem [0:31];
+	// power-up a 0 (como la BSRAM real; en sim evita X)
+	integer ii;
+	initial for (ii = 0; ii < 32; ii = ii + 1) mem[ii] = 0;
+	reg [16:0] rd_q;
+	always @(posedge CLK) begin
+		if (WREN) mem[WRADDR] <= DATA;
+		rd_q <= mem[RDADDR];
+	end
+	assign Q = rd_q;
+
+endmodule
+
+module OPL4_REG_RAM
+#(
+	parameter aw = 5, dw = 8
+)
+(
+	input            CLK,
+	input  [aw-1: 0] WRADDR,
+	input  [dw-1: 0] DATA,
+	input            WREN,
+	input  [aw-1: 0] RDADDR,
+	output [dw-1: 0] Q
+);
+
+	// ERA v3: lectura SINCRONA, pero en REGISTROS (no BSRAM): hay 17
+	// instancias de 32x8 con direcciones de lectura DISTINTAS y
+	// concurrentes (SA_RA/FNUM_RA/AM_RA/LFO_RA/readback) — infusionables
+	// en una sola BSRAM, y 17 BSRAMs por 4,3Kbit reventaban el chip
+	// (PA2017: 127/118 con el doblado SDP32/36 de la advisory 202409001).
+	// Como FF son ~4,3K registros: el plan-B asumido de la migracion.
+	(* syn_ramstyle = "registers" *) reg [dw-1:0] mem [0:(2**aw)-1];
+	// power-up a 0 (como la BSRAM real; en sim evita X)
+	integer ii;
+	initial for (ii = 0; ii < (2**aw); ii = ii + 1) mem[ii] = 0;
+	reg [dw-1:0] rd_q;
+	always @(posedge CLK) begin
+		if (WREN) mem[WRADDR] <= DATA;
+		rd_q <= mem[RDADDR];
+	end
+	assign Q = rd_q;
+
+endmodule

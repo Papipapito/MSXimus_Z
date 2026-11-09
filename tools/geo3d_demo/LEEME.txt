@@ -1,0 +1,74 @@
+tools/geo3d_demo — la demo "MSXIMUS" en 3D sobre geo3d (27/09/2026)
+================================================================================
+geo3d es el coprocesador 3D de Alex Moncks (MIT, https://github.com/alexmoncks/V9968_Cartridge, carpeta geo3d/); en el
+MSXimus Z vive en fpga/geo3d/ y responde en 9Dh/9Fh (ver fpga/geo3d/ORIGEN.txt). Esta carpeta guarda LO NUESTRO: la
+demo se construye DENTRO de un clon de su repo (necesita sus gen_tables.py, gen_face_tables.py, run_demo_z80.py,
+tb_engine.v, gen_scenes.py y render_video.py).
+
+Ficheros
+- gen_msximus_tables.py     -> copiar a geo3d/z80/ del clon y ejecutar: escribe geo_msximus_tables.asm (la palabra
+                               "MSXIMUS" como 29 bloques extruidos: 232 vertices, 174 caras; letras M S X I U nuevas en
+                               su rejilla 5x7) y msximus_palette.txt (rampa roja para las tapas, azul para los lados).
+- geo3d_msximus_demo98.asm  -> su geo3d_faces_demo.asm con include "geo_msximus_tables.asm" y los puertos en 98h
+                               (VDP 98-9Bh, geo3d 9Dh/9Fh): z80asm -o GEO3DM.COM geo3d_msximus_demo98.asm.
+                               GEO3DM.COM se lanza desde MSX-DOS/Nextor en el MSXimus Z; cualquier tecla sale.
+                               (Para su emulador run_demo_z80.py hace falta la version con puertos 88h: sed de los equ.)
+- geo3d_msximus_demo88.asm  -> la misma demo con los puertos en 88h: es la que su run_demo_z80.py y su build_rom.py
+                               (captured) entienden; con ella la ROM de demos lleva "MSXIMUS" como cuarta demo.
+- build_rom_msximus.patch   -> su build_rom.py (main eeb13f4, con la firma ROM_AS16) con la demo msximus tras faces
+                               (LOOPS, captured, paleta).
+- build_rom_msximus.sh      -> la ROM de 7 demos de punta a punta (WSL) sobre una COPIA de su geo3d/ extraida con LF
+                               (la orden esta en la cabecera): copia la demo (88h) y gen_msximus_tables.py a z80/, aplica
+                               el patch, apunta las fuentes a ~/g3tools si faltan, build_rom.py --base 0x98, mira la firma
+                               ROM_AS16 en 0010h y pasa run_rom_z80.py --base 152 --lang en --keys digit (PASS, 7 demos).
+                               bash build_rom_msximus.sh <copia> -> <copia>/geo3d/rom/out/GEO3D_98.ROM = "MSXIMUS GEO3D.ROM"
+                               (md5 ce85331a1f6e, files/20261018/geo3d/). Sin firma (antes de eeb13f4) daba 08166a680476.
+- geo3d_rtl_tests.sh        -> sus bancos de RTL (fase 1, escenas, caras, texturas) sin la parte Z80: bash
+                               geo3d_rtl_tests.sh <clon>/geo3d [<dir rtl>]  (WSL, iverilog + python3).
+
+Herramientas (WSL Ubuntu-24.04, sin root): z80asm 1.8 (apt-get download z80asm; dpkg -x en ~/g3tools), fuentes
+DejaVu core+extra igual (su showcase las busca en /usr/share/fonts/truetype/dejavu: sed a ~/g3tools/usr/share/...),
+pip install --user --break-system-packages z80 pillow; ffmpeg solo hace falta para el mp4 (el GIF lo hace PIL).
+
+Cadena de verificacion usada el 27/09 (todo verde): run_demo_z80.py 130 GEO3DM88.COM -> msximus_stim.txt;
+check_demo.py -> msximus_expect.txt (modelo Python); tb_engine.v (su RTL) == modelo (129.200 LINE);
+tools/v9968_sim/run_geo3d_int_vl.sh msximus_stim.txt msximus_expect.txt (glue + geo3d_bus + VDP completo del
+MSXimus por 9Dh/9Fh) == modelo, 0 escrituras con CE = 1. Video: files/20260927/geo3d/msximus_demo.gif / .mp4.
+
+Binarios (files/20260927/geo3d/, fuera del git): GEO3DM.COM (md5 790a5cb30155) y "GEO3D_98 [ASCII16].ROM" (su ROM
+de demos para la base 98h, 256 KB ASCII16, md5 45c2aecccb71; sin musica). En estas ROM SIN firma la etiqueta
+[ASCII16] en el nombre es OBLIGATORIA: el escaneo por contenido del menu la da por Konami-SCC (5 falsos 32 xx 50/90/B0
+en los datos comprimidos contra 1 escritura real a 7000h) y con SCC la escritura a 7000h del reproductor cambia su
+propio codigo en 6000-7FFF. Las ROM con la firma ROM_AS16 (Alex, desde eeb13f4) no la necesitan: el menu lee la firma
+(Z1.2.3b5 y posteriores) y su escaneo por contenido tambien da ASCII16 (40 LD (nnnn),A de ASCII16 detras de la firma).
+
+Las demos de kanon-ai (29/09/2026): V9968_Geo3D_SampleDemo por la cadena del MSXimus
+================================================================================
+https://github.com/kanon-ai/V9968_Geo3D_SampleDemo (MIT): seis ROMs ASCII16 (VECTOR/RUSH, SKYBOUND, ORBITAL, ORBITAL
+TYPE REAL, NIGHT RAVEN, OBSIDIAN) para turbo R + V9968 en 98h + geo3d en 9Dh/9Fh, probadas por su autor solo en el
+openMSX de Alex. Ver files/20260929/LEEME_geo3d_kanon.txt para lo que hacen, lo que tocan y como probarlas en la placa.
+
+- run_kanon_rom.py    -> corre una de sus ROMs en el Z80 del paquete pip z80 como lo haria el MSXimus (mapper ASCII16
+                         por 6000h/7000h interceptado, BIOS de mentira, VDP/geo3d/S1990 contestados) y graba el
+                         estimulo geo3d (W/R/K/F, el de siempre) y el de SISTEMA (ademas V reg val, C = esperar CE,
+                         X addr b = VRAM por 98h, A = paleta, D y0 = volcar la pagina mostrada) y la paleta.
+- kanon_battery.sh    -> las seis (o las que se digan) de punta a punta: run_kanon_rom.py -> check_demo.py de Alex
+                         (registro esperado del modelo Python) -> tools/v9968_sim/run_geo3d_sys_vl.sh (tb_geo3d_sys:
+                         glue + geo3d_bus + VDP COMPLETO del MSXimus por los puertos, Verilator) -> diff con el
+                         modelo + paginas de VRAM -> frames_to_png.py (PNG y GIF de lo que pinta NUESTRA RTL).
+                         bash kanon_battery.sh <clon kanon> <clon geo3d de alexmoncks> <salida> [cuadros] [demos...]
+- frames_to_png.py    -> las paginas volcadas (212 x 128 bytes en hex) a PNG/GIF con la paleta de la demo.
+
+Construir sus ROMs (no estan en el git; las publicadas estan en sus releases): pip install numpy pillow; sdasz80 y
+sdldz80 del SDCC (apt sdcc; sus build.py piden sdasz80.exe/sdldz80.exe: enlaces simbolicos en $SDCC_BIN);
+python3 demos/<demo>/build.py; obsidian ademas ROM_FONT=<un .ttf monoespaciado>. Con numpy 2.4.6 / Pillow 12.3 /
+sdas V02.00 salieron BIT A BIT iguales a las publicadas VECTOR_RUSH, ORBITAL, ORBITAL-TYPE-REAL y NIGHT_RAVEN
+(v0.3.2); SKYBOUND difiere (su conversion de textura depende de la Pillow) y OBSIDIAN depende de la fuente.
+
+geo3d v2.0.0 (27/10/2026)
+================================================================================
+fpga/geo3d/ lleva la v2.0.0 (ver ORIGEN.txt). Los bancos valen igual: tb_geo3d_int.sv / tb_geo3d_sys.sv aceptan ahora la
+operacion G (G <indice> <n>: leer n registros por 9Fh) que usan los estimulos de gen_v2_scenes.py, y el sondeo de RUN
+admite hasta 8.000.000 de lecturas (las escenas de caras y texturas pasan de 400.000). geo3d_rtl_tests.sh y kanon_battery.sh
+sirven con el clon de la rama geo3d-v2.0 de alexmoncks. Software v2.0 para la placa: ver files/20261027/geo3d_v2/LEEME.txt
+(GEOFIGHTER_98.ROM y CUBEMAZE_98.ROM de alexmoncks, MIT; no se versionan).

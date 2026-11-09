@@ -1,0 +1,44 @@
+geo3d — coprocesador de geometria 3D para MSX + V9968, de Alex Moncks (MIT).
+================================================================================
+Version: geo3d v2.0.0 (adoptada el 27/10/2026, rama z1212/geo3d). Hasta el 26/10/2026 llevabamos la v1.0.0.
+Origen : https://github.com/alexmoncks/V9968_Cartridge (fork del V9968_Cartridge de HRA!), rama geo3d-v2.0, carpeta
+         geo3d/rtl/, commit d354695 (16/10/2026, "geo3d v2.0: BSRAM placement for 20 RAMs, closes with HRA!'s own
+         settings"). Mismos blobs que el upstream de HRA 7820668 ("Geo3D v2.0.0", 19/10/2026,
+         fpga/V9968_Cartridge_TangNano20K/src/geo3d): geo3d_bus.v cc34b57e, geo3d_core.v 1f2e84ef (igual que en la v1.0.0),
+         geo3d_engine.v 0f86f18e (git hash-object). v1.0.0 = tag geo3d-v1.0.0 (6ed10ff; bus 29146166, engine be74175a).
+v2.0 cambia: hasta 1023 vertices / aristas / caras (RAMs de 1024 entradas, parametro AW = 10 del motor), registros
+         nuevos XCTRL (6Fh) / VFIRST / FFIRST / EFIRST, ID 20h en 49h (el software v2.0 lo exige: GEO FIGHTER, Cube Maze,
+         las ediciones *-GEO3D-V2 de kanon-ai), motor mas rapido y reset del motor desde un flop propio (rst_e en
+         geo3d_bus). Puertos y ext_cmd_* IGUALES: el programa v1.0.0 saca los mismos comandos (probado, ver abajo).
+HMMV RAPIDO (Z1.3.2b9, 01/11/2026): geo3d_engine.v y geo3d_bus.v son los de HRA 3d55af4 (v0.92; engine dc032d60, bus 179d832a):
+         el motor marca con cmd_fill_span el R#46 de una fila rellena de cara plana (LINE + IMP) y el VDP la ejecuta como HMMV de una
+         fila en SCREEN 8 (fpga/v9968/vdp_command.v). Mismos comandos por el gancho ext_cmd_*, solo se anade la etiqueta (la v1.0.0 y
+         la v2.0.0 de Alex no la tienen; geo3d_core.v no cambia). NO se porta la parte de geo3d_bus.v de bee8f7e (relanzado en el
+         flanco de bajada de clk: hold de Gowin). Detalle y bancos en fpga/v9968/ORIGEN.txt (seccion del 01/11/2026).
+Ficheros: geo3d_core.v, geo3d_engine.v, geo3d_bus.v  — SIN CAMBIOS respecto al origen (diff = 0) hasta el 31/10/2026 (los blobs de
+         arriba); desde la b9 engine y bus llevan cmd_fill_span (ver arriba). AW = 10 (el defecto del
+         motor; geo3d_bus no lo pasa). geo3d_z80if.v (su fase 1, interfaz Z80 directa) no se usa: aqui entra por
+         geo3d_bus, el adaptador al bus valid/ready.
+Licencia: MIT (LICENSE en esta carpeta, la del repo de origen; blob 22985bc5 en los dos).
+
+Como va en el MSXimus Z (27/09/2026, fpga/zynq/top_zynq.v, `define ENABLE_GEO3D):
+- Cartucho virtual SIEMPRE presente en los puertos 9Dh (indice / estado) y 9Fh (datos), los "offsets 5 y 7" del bloque
+  del VDP en 98h; 9Eh y los espejos 8Dh/8Fh no responden. Es lo que espera la ROM de demos GEO3D_98.ROM (build_rom.py
+  --base 0x98) y el openMSX de alexmoncks con `-ext geo3d`.
+- Cuelga del bus valid/ready del glue del V9968 (v9968_cpu_glue): la decodificacion vdp_io_hit incluye 9Dh/9Fh, el
+  glue hace la transaccion como con el VDP y geo3d_bus se la queda (hit); el VDP no ve el valid de esos accesos y en
+  las lecturas responde el que emite rdata_en.
+- Reloj: bus y VDP a clk_86 (85,909 MHz); el motor a clk_43 = CLKOUT1 (/22) de la MISMA PLLE2 del V9968, /2 exacto y
+  en fase, como el clk42g de su cartucho Tang. Cruces por toggle dentro de geo3d_bus.
+- fpga/v9968/vdp.v lleva su parche: puertos ext_cmd_wr/num/data OR-eados en vdp_command (R#32-R#46) y ext_cmd_ce
+  (= S#2 CE) hacia fuera. Con ext_cmd_wr = 0 el VDP es identico. Los bancos de tools/v9968_sim los atan a 0.
+- Banco de integracion: tools/v9968_sim/tb_geo3d_int.sv + run_geo3d_int_vl.sh (glue + geo3d_bus + vdp completo con
+  VRAM perfecta; reproduce sus escenas aleatorias de sim/gen_scenes.py por los puertos 9Dh/9Fh y compara el registro
+  de LINEs con su modelo).
+
+Coste en el MSXimus Z (build completa de Vivado 2019.2, 27/10/2026, frente a release/z1.2.12 con la v1.0.0): +429 LUT
+(41.107 -> 41.536), +171 FF, BRAM 134 -> 137 de 140 (AW = 10: las RAM de 1.024 entradas), slices 99,4 % -> 99,0 %, WNS
++0,628 -> +0,551 ns, WHS +0,036 -> +0,021 ns; el motor (pD_43) con +9,9 ns de margen. Ver files/20261027/geo3d_v2/.
+Verificacion (27/10/2026): run_v2.sh de Alex (todo PASS); tb_geo3d_int (escenas, caras, texturas y escenas v2 con la
+operacion G de lectura de registros) y las seis ROM v1 de kanon-ai por tb_geo3d_sys: registro de comandos identico al
+modelo v2.0 en todos, 0 escrituras con CE = 1. Sin probar en placa.
