@@ -2,6 +2,8 @@
 
 Cómo se usa el MSXimus Z (Z1.3.1) el primer día: qué conectar, qué se ve al encender, qué hace cada pantalla del menú y qué teclas tiene. Frases cortas y solo lo que hace falta. El detalle de cada cosa está en los capítulos del manual, enlazados en cada apartado y al final.
 
+**¿Placa nueva, sin nada grabado?** Antes de esto va la [puesta en funcionamiento](02-instalacion.md#puesta-en-funcionamiento-paso-a-paso) del capítulo 02: lo que hace falta y cómo dejarla instalada, en unos diez minutos y sin Vivado.
+
 ## 1. Primeros pasos
 
 ### Qué conectar
@@ -11,7 +13,7 @@ Cómo se usa el MSXimus Z (Z1.3.1) el primer día: qué conectar, qué se ve al 
 | **HDMI** | Al televisor o monitor. Sale siempre 720p a 60 Hz, con el audio |
 | **USB-C P3** (USB host) | Teclado. Ratón y mando, si se quieren. Con un hub, todos a la vez. Hace falta un adaptador USB-C a USB-A |
 | **TF2** | La microSD del MSX, con la imagen que prepara [MSX SD Maker](https://github.com/Papipapito/SD_Maker): ROMs, discos, Nextor, la carpeta `FHUNT` |
-| **TF1** | La tarjeta de **perfiles**: el MSX no la ve (la prepara la propia placa, [capítulo 03](03-tarjeta-sd.md)). Si se arranca de SD (SW1 en OFF-OFF), el `BOOT.bin` va en su primera partición FAT32 |
+| **TF1** | La tarjeta de **perfiles**: el MSX no la ve (la prepara la propia placa, [capítulo 03](03-tarjeta-sd.md)). Si se arranca de SD (SW1 en OFF-OFF), el `BOOT.bin` va en su primera partición (FAT32 o FAT16) |
 | **J3** | Cable de red (opcional) |
 | **SW1** | En **ON-OFF** (QSPI) para el uso normal. Se lee solo al dar corriente |
 

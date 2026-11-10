@@ -4,7 +4,7 @@ El MSXimus Z se actualiza solo, por la red: desde el panel **F12**, sin PC, sin 
 
 ## 1. Qué hace falta
 
-- **La instalación en la QSPI.** La actualización escribe en la memoria QSPI de la placa, así que necesita que la máquina arranque de ella (**SW1 en ON-OFF**, [capítulo 02](02-instalacion.md)). Con el sistema arrancado desde la microSD de TF1 o por JTAG, la página se abre y busca, pero no puede reiniciar en la imagen nueva: en la esquina inferior derecha pone `JTAG` en vez de `QSPI`, y **R** contesta *"SW1 en QSPI y apaga"*.
+- **La instalación en la QSPI.** La actualización escribe en la memoria QSPI de la placa, así que necesita que la máquina arranque de ella (**SW1 en ON-OFF**, [capítulo 02](02-instalacion.md)). Con el sistema arrancado por JTAG, la página se abre y busca, pero no puede reiniciar en la imagen nueva: en la esquina inferior derecha pone `JTAG` en vez de `QSPI`, y **R** contesta *"SW1 en QSPI y apaga"*. Con el sistema arrancado desde la microSD de TF1 la página es otra (sección 10): sirve para instalar la imagen de fábrica en la QSPI, sin Vivado.
 - **Red**, de una de las dos maneras del [capítulo 07](07-wifi-file-hunter.md):
 
 | Camino | Qué tarda | Qué pasa con el MSX |
@@ -104,7 +104,7 @@ La QSPI guarda dos imágenes:
 | Descarga dañada | El tamaño, la suma o la cabecera de la imagen no cuadran. Reintentar |
 | Datos de versión no válidos / Respuesta no válida | El servidor devolvió algo que la placa no entiende |
 | Error al grabar la QSPI | La relectura no coincide con lo bajado. Reintentar |
-| SW1 en QSPI y apaga | La placa no arrancó de la QSPI (modo JTAG o microSD): no puede reiniciar en la ranura B |
+| SW1 en QSPI y apaga | La placa no arrancó de la QSPI (modo JTAG): no puede reiniciar en la ranura B |
 | No se puede reiniciar / No se puede probar la B | Apaga y enciende |
 
 En todos los de red, **U** lo intenta otra vez.
@@ -135,3 +135,17 @@ Una versión puede traer además **perfiles**: versiones del PL con otros chips 
 Los perfiles de una versión que **aún no has instalado** se ven pero no se bajan (*Instala antes la versión nueva del sistema*): instala la versión (**I**) y entonces **P**, o se sustituirían los que carga la versión de ahora. Al terminar de bajar, el panel se abre solo en esa vista y deja el MSX en pausa el segundo que tarda en guardar el perfil; ESC o F12 lo cierran. Antes de bajar nada la placa comprueba que haya tarjeta en TF1, partición de perfiles y un hueco libre; si falta algo, lo dice (*No hay tarjeta*, *La tarjeta no tiene partición de perfiles: T la crea*, *No queda hueco: borra un perfil*) y no baja nada. Un perfil lleva su SHA-256 en el manifiesto firmado, igual que las imágenes: si llega alterado sale *Descarga dañada*. Actualizar el sistema y bajar un perfil no se pueden hacer a la vez.
 
 Más problemas, en el [capítulo 10](10-problemas.md).
+
+## 10. Con la placa arrancada desde SD: instalar la imagen de fábrica
+
+Con SW1 en SD (arranque del `BOOT.bin` de la microSD de TF1) **F12 → U** no busca versiones por la red: enseña la tarjeta *BOOT.bin de la SD* y graba la **ranura A** de la QSPI con ese fichero, sin Vivado. Es la primera instalación de una placa nueva ([capítulo 02, §4.1](02-instalacion.md)).
+
+| Tecla | Qué hace |
+|---|---|
+| **A** | Lee el `BOOT.bin` de la raíz de la FAT32 o FAT16 de TF1 y comprueba que es de esta placa. Enseña su versión y su variante |
+| **A, A** | Con el fichero ya leído, dos veces seguidas (otra tecla de por medio la desarma): borra y graba la ranura A (*Leer, Borrar, Grabar, Verif*) y la relee comparándola con lo leído. Al acabar: *Grabada en la ranura A. Apaga y pon SW1 en QSPI* |
+| **ESC** | Vuelve |
+
+No hay que apagar mientras graba. Si se va la luz, la ranura A queda a medias y la QSPI no arrancaría, pero la SD sí: se vuelve a arrancar de ella y se repite. La grabación borra también el registro de la ranura B: una B instalada antes no vuelve a arrancar y se baja otra vez por la red cuando haga falta.
+
+Errores de esta página: *No hay tarjeta en la TF1*, *La TF1 no es FAT16 ni FAT32* (hace falta una partición FAT32 o FAT16, con o sin tabla de particiones; la línea de debajo dice lo que hay: `MBR 0E 00 00 00 P1:FAT12` es una tarjeta con tabla cuya primera partición está en FAT12, `Sin MBR: exFAT` una tarjeta entera en exFAT, `Sector 0 sin 55AA` una tarjeta vacía o sin formato), *No hay BOOT.bin en la TF1* (en la raíz, con ese nombre), *BOOT.bin de tamaño raro* (entre 4 KB y 8 MB), *BOOT.bin dañado en la TF1*, *Error leyendo la TF1*, *No es para esta placa* y *BOOT.bin no válido*. **A** lo intenta otra vez.

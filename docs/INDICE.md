@@ -27,7 +27,7 @@ Idioma: castellano en las dos partes. El README de la raíz está también en in
 |---|---|---|
 | 00 | [Guía rápida](manual/00-guia-rapida.md) | Para empezar: qué conectar, las pantallas del menú, el panel F12, los modos de vídeo y todas las teclas, en una sola página |
 | 01 | [Qué es el MSXimus Z](manual/01-que-es.md) | La placa y sus dos mitades, lo que trae la máquina, lo que hace falta para montarla y lo que no es |
-| 02 | [Instalación](manual/02-instalacion.md) | El `BOOT.bin` y sus variantes, el interruptor SW1, grabar la QSPI, arrancar desde TF1, las conexiones, la red, el primer arranque |
+| 02 | [Instalación](manual/02-instalacion.md) | **Lo que hace falta y la puesta en funcionamiento paso a paso** (sin Vivado). El `BOOT.bin` y sus variantes, el interruptor SW1, grabar la QSPI, arrancar desde TF1, las conexiones, la red, el primer arranque |
 | 03 | [Las tarjetas SD: TF1 y TF2](manual/03-tarjeta-sd.md) | Qué hace cada ranura, TF1 para los perfiles (cómo se prepara), qué tarjeta y qué formato pide TF2, qué poner y dónde, WaveGame, etiquetas, discos |
 | 04 | [El menú de arranque](manual/04-menu.md) | El navegador, lanzar ROMs y discos, la disquetera USB, Ajustes, WiFi, File-Hunter, el menú de pruebas, la ayuda, el panel F12 y todas las teclas |
 | 05 | [ROMs y mappers](manual/05-roms-mappers.md) | La megaram de 8 MB, los mappers y cómo se decide cuál, la SRAM de cartucho, el Game Master 2, el segundo SCC y las ROMs que no lanzan |

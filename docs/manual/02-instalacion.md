@@ -2,6 +2,83 @@
 
 Qué hay que grabar en la ZYNQ MINI y con qué herramienta. Toda la máquina viaja en un único fichero, `BOOT.bin`, que se graba una vez en la memoria QSPI de la placa o se deja en una microSD en la ranura TF1. No hay nada más que grabar: el bitstream, el programa del procesador, el pack de BIOS y la tabla de ondas del MoonSound van todos dentro. Una vez en la QSPI, las versiones siguientes llegan por la red ([capítulo 12](12-actualizar.md)). La red por cable no necesita nada más que el cable; la pieza opcional para la WiFi, la ESP32-S3 de Waveshare, tiene su propio procedimiento en la sección 8.
 
+## Puesta en funcionamiento, paso a paso
+
+Lo que hay que hacer con una placa nueva, de la caja a jugar, sin Vivado. Son unos diez minutos, más lo que tarde en prepararse la tarjeta del MSX. Hace falta un `BOOT.bin` de la **Z1.4.4 o posterior**; con uno anterior, la imagen se graba con Vivado (sección 4.2).
+
+### Antes de empezar
+
+| Qué | Para qué |
+|---|---|
+| La placa **ZYNQ MINI**, mejor con un disipador sobre el chip | Sin disipador trabaja a unos 80 °C; con él, a unos 55 |
+| Alimentación de **5 V por USB-C** | |
+| Una pantalla con **HDMI** y su cable | Sale a 720p, con el audio |
+| Un **teclado USB** y un adaptador de USB-C a USB-A (o un hub USB-C) para el conector **P3** | La instalación se hace desde el panel F12; y el MSX, claro, se usa con él |
+| Una **microSD para TF1**, de 1 GB o más | Primero lleva el `BOOT.bin` para instalar; después la placa la convierte en la tarjeta de los perfiles, que pide 1 GB o más |
+| Una **microSD para TF2** | La del MSX: juegos, discos, Nextor. Se prepara con [MSX SD Maker](https://github.com/Papipapito/SD_Maker) ([capítulo 03](03-tarjeta-sd.md)) |
+| Un **PC con lector de microSD** | Para copiar el `BOOT.bin` a TF1 y preparar TF2 (MSX SD Maker es para Windows) |
+| **Red**: un cable Ethernet en **J3** con salida a Internet (la IP la da el router), o la WiFi de la ESP32-S3 (sección 8) | Para dejarla en la última versión y bajar los perfiles. Sin red el MSX funciona igual, pero se queda en la versión instalada y sin perfiles |
+
+No hace falta Vivado ni ningún programa en el PC aparte del explorador de archivos y MSX SD Maker.
+
+### 1. Preparar la tarjeta de instalación (en el PC)
+
+1. De la [release de GitHub](https://github.com/Papipapito/MSXimus_Z/releases/latest) baja **uno** de los `BOOT_*.bin`: el de la variante que quieras (sección 2, *Las cuatro variantes*). Si dudas, `nextor214` (castellano, Nextor 2.1.4). Se puede cambiar después desde la placa.
+2. Formatea la microSD de TF1 en **FAT32** (o FAT16). En Windows: botón derecho sobre la unidad, *Formatear*, sistema de archivos *FAT32*, tamaño de unidad de asignación *predeterminado*. Windows no ofrece FAT32 en tarjetas de más de 32 GB: usa una de 32 GB o menos.
+3. Copia el fichero a la **raíz** de la tarjeta, no dentro de una carpeta, y renómbralo exactamente **`BOOT.bin`**. Ojo con Windows, que esconde las extensiones: si el nombre queda `BOOT.bin.bin`, la placa no lo encuentra (en el Explorador, *Vista* → *Mostrar* → *Extensiones de nombre de archivo* las enseña).
+4. Expulsa la tarjeta desde Windows antes de sacarla.
+
+Si ya tienes la tarjeta del MSX hecha con MSX SD Maker, tenla a mano; si no, se puede preparar al final.
+
+### 2. Montar y arrancar desde la SD
+
+5. Con la placa **sin corriente**, la tarjeta del paso anterior en **TF1**: mirando la placa por el lado del HDMI, la ranura de su izquierda (marcada en rojo en la foto). La del MSX, si la tienes, en **TF2**, la de la derecha.
+
+   ![La ranura TF1, marcada en rojo, a la izquierda del HDMI](capturas/tf1-ranura.jpg)
+
+6. **SW1 en OFF-OFF**: arranque desde la SD. SW1 solo se lee al dar la corriente.
+7. El HDMI a la pantalla, el teclado en **P3** y, si tienes, el cable de red en **J3**.
+8. Dale corriente. A los pocos segundos salen el logo del MSXimus y el menú (o el aviso de que no hay tarjeta, si TF2 está vacía o no está). Es la versión del `BOOT.bin` de la tarjeta, cargada desde ella: todavía no se ha grabado nada.
+
+Si la pantalla se queda negra y la OLED apagada, la placa no ha encontrado el `BOOT.bin`: mira el nombre (paso 3), que esté en la raíz, que la tarjeta esté en TF1 y no en TF2, y SW1.
+
+### 3. Grabarlo en la QSPI
+
+9. Pulsa **F12** y luego **U**. Con la placa arrancada desde la SD, la página se llama *BOOT.bin de la SD*: arriba, en *Instalada*, pone «arranque desde la SD», y abajo a la derecha, `SD`.
+10. Pulsa **A**. La placa lee el `BOOT.bin` de TF1 y comprueba que es una imagen de esta placa; en unos segundos enseña su versión, su tamaño (unos 6 MB) y su variante, con el aviso *Reemplaza la de fábrica*.
+11. Pulsa **A dos veces seguidas** (otra tecla entre medias anula la primera). Empieza la grabación de la **ranura A** de la QSPI, la imagen de fábrica: *Leer*, *Borrar*, *Grabar* y *Verif*, con una barra de progreso. Tarda alrededor de un minuto. **No apagues la placa** mientras tanto. Si se va la luz no pasa nada grave: la tarjeta sigue arrancando y se repite desde el paso 9. **ESC** oculta la página y la grabación sigue.
+12. Al acabar, la página dice *Grabada en la ranura A* y *Apaga y pon SW1 en QSPI*.
+
+### 4. Arrancar desde la QSPI
+
+13. Quita la corriente, pon **SW1 en ON-OFF** (QSPI) y vuelve a darla. La placa arranca sola de la QSPI, ya sin depender de la tarjeta.
+14. Compruébalo: **F12 → U** pone ahora, en *Instalada*, la versión con «ranura A · de fábrica». A partir de aquí SW1 se queda siempre en ON-OFF.
+
+### 5. Dejarla al día
+
+15. **Preparar TF1 para los perfiles.** El panel F12 avisa *TF1 nueva: P la prepara*. Pulsa **F12 → P**: como la tarjeta tiene datos (el `BOOT.bin`), pide confirmación, **B** y luego **Intro**. La placa la borra entera (el `BOOT.bin` ya no hace falta: está en la QSPI) y la deja con una partición FAT32 de 128 MiB y otra para los perfiles ([capítulo 03](03-tarjeta-sd.md)).
+16. **Última versión.** Con red, **F12 → U** busca la última versión publicada. Si hay una nueva, **I** la baja, la graba en la **ranura B** y la comprueba, y **R** reinicia con ella; si dice *Estás al día*, no hay nada que hacer. La ranura A, la que acabas de grabar, no la toca ninguna actualización: es la vuelta atrás ([capítulo 12](12-actualizar.md)).
+17. **Perfiles.** **F12 → P → S** baja los perfiles (Música, Dual, Turbo R y Turbo R V9990) a TF1.
+18. **La tarjeta del MSX.** Si no la tenías, prepárala con MSX SD Maker, ponla en **TF2** y pulsa el botón de reset del MSX (**K2**), o apaga y enciende.
+
+Listo: el MSX arranca al dar la corriente y se actualiza con **F12 → U**. El primer día con el menú lo cuenta la [guía rápida](00-guia-rapida.md).
+
+### Si algo falla
+
+| Lo que pasa | Por qué y qué hacer |
+|---|---|
+| Pantalla negra con SW1 en SD | No encuentra el `BOOT.bin`: nombre exacto `BOOT.bin` (no `BOOT.bin.bin`), en la raíz, tarjeta en TF1, FAT32 o FAT16. SW1 se lee solo al dar la corriente |
+| *No hay tarjeta en la TF1* | La tarjeta no está bien metida, o está en TF2 |
+| *La TF1 no es FAT16 ni FAT32* | Está en exFAT, NTFS o sin formato. La línea de debajo dice lo que encontró (`Sin MBR: exFAT`, `Sector 0 sin 55AA`...). Formatéala en FAT32 |
+| *No hay BOOT.bin en la TF1* | El fichero no está en la raíz o se llama de otra forma |
+| *No es para esta placa* o *BOOT.bin no válido* | No es un `BOOT.bin` del MSXimus Z o la descarga está mal: bájalo otra vez (GitHub enseña el SHA-256 de cada fichero de la release) |
+| *BOOT.bin de tamaño raro* | No es un `BOOT.bin`: miden unos 6 MB (entre 4 KB y 8 MB) |
+| Se fue la luz mientras grababa | Arranca otra vez con SW1 en SD y repite desde el paso 9 |
+| En F12 → U sale la página de la red, no la de la SD | La placa arrancó de la QSPI: SW1 en OFF-OFF y apagar y encender. Una placa ya instalada no necesita esto: se actualiza por la red |
+| En la página de la SD, U, I y R no hacen nada | Es lo normal: desde la SD solo se graba la ranura A |
+
+Grabar la imagen con Vivado por JTAG sigue siendo posible y deja lo mismo: sección 4.2.
+
 ## 1. La placa
 
 La OMDAZZ **ZYNQ MINI** lleva un XC7Z020: dos Cortex-A9 (el PS) y una FPGA Artix-7 (el PL) en el mismo chip, con 512 MB de DDR3 colgando del PS. El MSX corre en el PL; el procesador hace de *companion*: sirve la tarjeta, el USB, la red, la OLED, el panel F12, los ajustes, las actualizaciones y la música WaveGame. Lo que hay que localizar en la placa antes de empezar:
@@ -9,7 +86,7 @@ La OMDAZZ **ZYNQ MINI** lleva un XC7Z020: dos Cortex-A9 (el PS) y una FPGA Artix
 | | Para qué |
 |---|---|
 | **SW1** | El modo de arranque: JTAG, QSPI o SD. Sección 3 |
-| **TF1** | Ranura microSD de los perfiles; con SW1 en SD, además, lleva el `BOOT.bin` (sección 5). El MSX no la ve |
+| **TF1** | Ranura microSD de los perfiles; con SW1 en SD, además, lleva el `BOOT.bin` (sección 5). El MSX no la ve. A la izquierda del HDMI (foto en la *Puesta en funcionamiento*, paso 5) |
 | **TF2** | La microSD **del MSX**: ROMs, discos, carpetas WaveGame. Es la que ven el menú y Nextor |
 | **HDMI** | Al televisor o monitor. Salida 720p |
 | **J3** | El conector Ethernet (RJ45) del procesador: la red por cable. J2 es del PL y no se usa |
@@ -36,7 +113,7 @@ Una sola imagen, que el arranque del PS (el FSBL) lee de la QSPI o de TF1 y repa
 | `yrw801.rom` | La ROM de ondas del MoonSound, 2 MB | DDR 0x0F000000 |
 | `ota_info.bin` | 256 bytes de texto con la identidad de la imagen (versión, serie, variante, idioma y placa), que la actualización por red compara con la publicada | DDR 0x00E10000 |
 
-El FSBL carga las siete particiones y salta al companion; el companion inicializa TF2, el USB, la red y la OLED, lee los ajustes de la QSPI, los siembra en el core y suelta el MSX. En el lado del PL no hay ninguna memoria no volátil: el pack y las ondas se cargan en la DDR en cada arranque. Un `BOOT.bin` mide 6159424 bytes.
+El FSBL carga las siete particiones y salta al companion; el companion inicializa TF2, el USB, la red y la OLED, lee los ajustes de la QSPI, los siembra en el core y suelta el MSX. En el lado del PL no hay ninguna memoria no volátil: el pack y las ondas se cargan en la DDR en cada arranque. Un `BOOT.bin` mide unos 6 MB (6.344.256 bytes los de la Z1.4.4).
 
 ### Las cuatro variantes
 
@@ -44,14 +121,14 @@ Hay un `BOOT.bin` por variante: lo único que cambia entre ellos es el pack de B
 
 | Fichero | Menús, Ajustes y panel | Nextor |
 |---|---|---|
-| `BOOT_Z1.4.3_nextor214.bin` | Castellano | **2.1.4**, el estable, el que quieres |
-| `BOOT_Z1.4.3_nextor214-en.bin` | Inglés | 2.1.4 |
-| `BOOT_Z1.4.3_nextor3.bin` | Castellano | 3 |
-| `BOOT_Z1.4.3_nextor3-en.bin` | Inglés | 3 |
+| `BOOT_Z1.4.4_nextor214.bin` | Castellano | **2.1.4**, el estable, el que quieres |
+| `BOOT_Z1.4.4_nextor214-en.bin` | Inglés | 2.1.4 |
+| `BOOT_Z1.4.4_nextor3.bin` | Castellano | 3 |
+| `BOOT_Z1.4.4_nextor3-en.bin` | Inglés | 3 |
 
 ### De dónde sale
 
-La release `Z1.4.3` de GitHub trae los cuatro `BOOT_Z1.4.3_*.bin` listos para grabar y, aparte, `msximus_zynq_Z1.4.3.bit`, el mismo bitstream que va dentro de ellos, que solo hace falta para cargarlo por JTAG en desarrollo. Los arreglos menores no llegan a GitHub: salen solo por la actualización por red. Si sale una versión posterior solo por la red, se graba la de GitHub y luego **F12 → U** la actualiza ([capítulo 12](12-actualizar.md)). Se baja el `BOOT_*.bin` de la variante elegida y ya está; en la QSPI se graba tal cual (sección 4) y para el arranque por SD se copia a la tarjeta con el nombre `BOOT.bin` (sección 5).
+La release `Z1.4.4` de GitHub trae los cuatro `BOOT_Z1.4.4_*.bin` listos para grabar y, aparte, `msximus_zynq_Z1.4.4.bit`, el mismo bitstream que va dentro de ellos, que solo hace falta para cargarlo por JTAG en desarrollo. Los arreglos menores no llegan a GitHub: salen solo por la actualización por red. Si sale una versión posterior solo por la red, se graba la de GitHub y luego **F12 → U** la actualiza ([capítulo 12](12-actualizar.md)). Se baja el `BOOT_*.bin` de la variante elegida y ya está; en la QSPI se graba tal cual (sección 4) y para el arranque por SD se copia a la tarjeta con el nombre `BOOT.bin` (sección 5).
 
 Quien prefiera montarlo (con sus propias ROMs en el pack, o con un core compilado) tiene un script de bash:
 
@@ -88,11 +165,19 @@ Dos interruptores. Se leen **solo al dar corriente**: el reset de la placa (PS_S
 | **ON-OFF** | QSPI | El uso normal: arranca sola, sin tarjeta en TF1 |
 | **OFF-OFF** | SD | Arranca del `BOOT.bin` de la microSD de TF1 |
 
-Con SW1 en SD **ni se graba la QSPI ni funciona el arranque por JTAG**: se cuelgan. Para cualquier cosa por el cable JTAG, SW1 en JTAG o en QSPI.
+Con SW1 en SD **ni se graba la QSPI por JTAG ni funciona el arranque por JTAG**: se cuelgan. Para cualquier cosa por el cable JTAG, SW1 en JTAG o en QSPI. (La propia placa arrancada desde SD sí puede grabar su ranura A, sin Vivado: sección 4.1.)
 
 ## 4. Grabar el BOOT.bin en la QSPI
 
-La instalación definitiva: la placa arranca sola al enchufarla, sin tarjeta en TF1 y sin PC, y se actualiza por la red. Hace falta una sola vez.
+La instalación definitiva: la placa arranca sola al enchufarla, sin tarjeta en TF1 y sin PC, y se actualiza por la red. Hace falta una sola vez, y se puede hacer **desde la propia SD, sin Vivado** (4.1) o **con Vivado por JTAG** (4.2). El resultado es el mismo: la imagen de fábrica (ranura A) en la QSPI.
+
+### 4.1 Desde la propia SD, sin Vivado (Z1.4.4 o posterior)
+
+La placa arrancada desde SD graba ella misma la ranura A de la QSPI con el `BOOT.bin` de la tarjeta. El procedimiento entero, paso a paso, con lo que se ve en pantalla y qué hacer si algo falla, está al principio de este capítulo: *Puesta en funcionamiento, paso a paso*. En resumen: `BOOT.bin` en la raíz de una FAT32 o FAT16 en TF1, SW1 en SD, **F12 → U**, **A** para leerlo, **A, A** para grabarlo, y SW1 en QSPI.
+
+Con la placa arrancada desde SD las teclas de la red de esa página no hacen nada: la actualización por la red graba la ranura B, y desde SD esa ranura no arranca. Los errores salen en la misma página: *No hay tarjeta en la TF1*, *La TF1 no es FAT16 ni FAT32* (debajo dice lo que encontró en la tarjeta), *No hay BOOT.bin en la TF1*, *BOOT.bin de tamaño raro*, *No es para esta placa* y *BOOT.bin no válido*. Grabar la A desde la SD borra también el registro de la ranura B: una B instalada antes deja de arrancar y se vuelve a bajar por la red cuando haga falta. El detalle, en la [referencia técnica](../tecnica/11-actualizacion.md), sección 11.
+
+### 4.2 Con Vivado (JTAG)
 
 **Herramientas**: Vivado 2019.2 con su `hw_server`, el JTAG por USB de la placa y el árbol del repositorio con `fpga/zynq/arm/fsbl/fsbl.elf`. Vivado usa nuestro FSBL como ayudante: lo baja por JTAG y le va pasando el fichero por trozos, así que no hace falta el SDK.
 
@@ -110,7 +195,7 @@ Termina con `BUILD_OK` y deja `fsbl.elf` en esa carpeta. Las dos rutas de instal
 2. Desde `fpga/zynq`, con el `BOOT_*.bin` de la variante elegida (o el que se haya montado):
 
    ```
-   vivado -mode batch -source tools/qspi_program.tcl -tclargs program w25q128fv-qspi-x4-single BOOT_Z1.4.3_nextor214.bin
+   vivado -mode batch -source tools/qspi_program.tcl -tclargs program w25q128fv-qspi-x4-single BOOT_Z1.4.4_nextor214.bin
    ```
 
    `w25q128fv-qspi-x4-single` es el nombre que Vivado da al Winbond W25Q128 de U15; si una placa lleva otra flash, la cabecera del script lista los nombres de las Micron y Spansion equivalentes. El script borra, graba y verifica desde el offset 0 y acaba con `PROGRAM_OK`.
@@ -129,12 +214,12 @@ Cosas que pasan:
 
 ## 5. Arrancar desde la SD de TF1
 
-Sin grabar nada y sin Vivado: para probar un `BOOT.bin` sin tocar la QSPI, o en una placa donde no se quiera grabar.
+Sin grabar nada y sin Vivado: para probar un `BOOT.bin` sin tocar la QSPI, o en una placa donde no se quiera grabar. Es también el primer paso de la sección 4.1, que sí lo graba en la QSPI.
 
-1. Una microSD con una partición **FAT32** y el fichero en la raíz, llamado exactamente `BOOT.bin` (el `BOOT_*.bin` de la variante elegida, renombrado).
+1. Una microSD con una partición **FAT32 o FAT16** y el fichero en la raíz, llamado exactamente `BOOT.bin` (el `BOOT_*.bin` de la variante elegida, renombrado).
 2. La tarjeta en **TF1**, SW1 en **OFF-OFF** (SD), y encender.
 
-Es el mismo fichero que se graba en la QSPI. La actualización por red necesita la instalación en la QSPI: con el arranque por SD no sirve. Si esa tarjeta es también la de los perfiles (la prepara la propia placa, [capítulo 03](03-tarjeta-sd.md)), el `BOOT.bin` va en su primera partición, que es FAT32; arrancando desde ella la placa no la prepara ni la borra.
+Es el mismo fichero que se graba en la QSPI. La actualización por red necesita la instalación en la QSPI (sección 4): con el arranque por SD no sirve. Si esa tarjeta es también la de los perfiles (la prepara la propia placa, [capítulo 03](03-tarjeta-sd.md)), el `BOOT.bin` va en su primera partición, que es FAT32; arrancando desde ella la placa no la prepara ni la borra.
 
 ## 6. Las dos ranuras microSD
 
@@ -230,7 +315,7 @@ Si algo no cuadra:
 | Síntoma | Causa probable |
 |---|---|
 | Pantalla negra, nada en la OLED | SW1 en un modo sin nada que arrancar (QSPI vacía, o SD sin `BOOT.bin` en TF1), o se cambió SW1 sin apagar y encender |
-| Negra con SW1 en SD | La tarjeta de TF1 no tiene una partición FAT32 con el fichero llamado exactamente `BOOT.bin` en la raíz |
+| Negra con SW1 en SD | La tarjeta de TF1 no tiene una partición FAT32 o FAT16 con el fichero llamado exactamente `BOOT.bin` en la raíz |
 | "Sin tarjeta" en el menú | La del MSX es TF2, no TF1 |
 | El teclado no responde | Comprobar el hub; probar sin él |
 
@@ -240,7 +325,7 @@ El [capítulo 10](10-problemas.md) recoge el resto de síntomas.
 
 Lo normal es **por la red**: con la placa instalada en la QSPI, **F12** y luego **U** busca la última versión, enseña sus notas y la baja, la graba en la ranura B y la relee, y también es desde esa página donde se cambia de variante (Nextor y idioma). La imagen de fábrica grabada en la sección 4 no se toca nunca y siempre se puede volver a ella. El procedimiento completo, con sus teclas, lo cuenta el [capítulo 12](12-actualizar.md).
 
-Regrabar por JTAG (sección 4) o sustituir el `BOOT.bin` de la tarjeta de TF1 (sección 5) sigue valiendo para instalar una versión concreta o una compilada por uno mismo. Ojo con la ranura B: regrabar por JTAG solo graba el rango del fichero, y si hay una ranura B confirmada el FSBL sigue saltando a ella. Para quedarse con lo recién grabado, después de regrabar: **F12 → U → F, F, R** (borra el registro de la B y reinicia en la A). La tabla de ondas no cambia entre versiones.
+Regrabar por JTAG (sección 4.2) o sustituir el `BOOT.bin` de la tarjeta de TF1 (sección 5) sigue valiendo para instalar una versión concreta o una compilada por uno mismo. Ojo con la ranura B: regrabar por JTAG solo graba el rango del fichero, y si hay una ranura B confirmada el FSBL sigue saltando a ella. Para quedarse con lo recién grabado, después de regrabar: **F12 → U → F, F, R** (borra el registro de la B y reinicia en la A). Regrabar la ranura A desde la SD (sección 4.1) ya borra ese registro. La tabla de ondas no cambia entre versiones.
 
 Los ajustes van aparte, en el bloque `MSXC` del último sector de la QSPI (0xFFF000): config, turbo de arranque, ganancia y los niveles del mezclador. Un bloque inválido se rechaza y el core arranca con los de fábrica. Por JTAG se pueden mirar y sembrar con `tools/cfg.tcl show|set|mix`.
 

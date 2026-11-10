@@ -3,6 +3,20 @@
 Qué trae cada versión del MSXimus Z, de la más nueva a la más antigua. Las versiones grandes salen en la
 [release de GitHub](https://github.com/Papipapito/MSXimus_Z/releases); todas, por la actualización por red (F12 → U).
 
+## Z1.4.4 — 10/11/2026 · GitHub y red · La ranura A desde la SD (sin Vivado)
+
+**Una placa nueva ya no necesita Vivado.** Con SW1 en SD y el `BOOT.bin` de la versión en una microSD FAT32 o FAT16 en TF1, **F12 → U** enseña *BOOT.bin de la SD* y la tecla **A** lo lee y **A, A** lo graba en la ranura A (la de fábrica) de la QSPI. Después, SW1 en QSPI y todo lo demás (preparar la tarjeta de perfiles con F12 → P, bajar los perfiles, actualizar por la red a la ranura B) es el uso de siempre.
+
+- **`bootsd.c`**: lector de solo lectura de la FAT32 o FAT16 de TF1, lo mismo que lee el BootROM para arrancar (con o sin MBR, cualquier tamaño de cluster, fichero fragmentado, nombres largos); entre 4 KB y 8 MB. Reconoce la FAT32 como Windows, por su estructura y no por el número de clusters: la primera prueba en placa rechazaba la tarjeta de los perfiles reformateada en Windows, y la segunda una tarjeta en FAT16 con la que la placa arrancaba. Si no encuentra ninguna, debajo del error dice lo que vio (`MBR 0E 00 00 00 P1:FAT12`, `Sin MBR: exFAT`...).
+- **Se comprueba antes de grabar**: cabecera de arranque, `ota_info` y que sea de esta placa. La relectura se compara byte a byte con lo leído. Se borra también el registro de la B, para que el FSBL no salte a una B vieja.
+- **Sin riesgo de bloquear la placa**: si se va la luz a mitad, la QSPI no arranca pero la SD sí, y se repite.
+- En SD la página no busca por la red (la actualización por red graba la B y desde SD no arranca).
+- **Documentación**: lo que hace falta y la puesta en funcionamiento paso a paso, en el README y al principio del capítulo 02 del manual, con una foto de la ranura TF1.
+- Serie 2026111004: los perfiles se vuelven a publicar con ella (el mismo contenido que los de la Z1.4.3); un perfil solo se carga con el sistema de su serie, así que tras actualizar hay que volver a bajarlos (F12 → P → S).
+- Comprobado en los bancos de PC (`tests/bootsd_host`, casos 25 a 28 de `tests/ota_host`) y **en placa** el 10/11: lee el `BOOT.bin` de una tarjeta FAT16, graba la ranura A y la placa arranca de ella con SW1 en QSPI. Falta probar un apagón a mitad de la grabación. El PL no cambia.
+
+Detalle en el [manual](../manual/02-instalacion.md) (*Puesta en funcionamiento*, y 4.1) y en el [capítulo 11](11-actualizacion.md), sección 11.
+
 ## Z1.4.3 — 09/11/2026 · GitHub y red
 
 Reúne la Z1.4.1 y la Z1.4.2 (que no llegaron a publicarse por separado) con la TF1 solo para perfiles: es la primera versión oficial después de la Z1.4.0.

@@ -33,7 +33,7 @@ SRCS="start.S main.c mmu.c log.c profile.c mxpf.c inflate.c perfiles.c perfiles_
       $TU/portable/chipidea/ci_hs/hcd_ci_hs.c $TU/portable/ehci/ehci.c
       $SDPS/xsdps.c $SDPS/xsdps_options.c $SDPS/xsdps_sinit.c
       $STD/common/xil_assert.c $STD/common/xil_printf.c $STD/common/xplatform_info.c
-      net.c net_phy.c ota.c osd_dib.c osd_info.c yrw801.c tr_bios.c bsp/xtopology_g.c bsp/xemacps_g.c esp_link.c esp_cmd.c esp_tcp.c esp_tsx.c esp_tls.c s3_link.c $LWC/apps/sntp/sntp.c
+      net.c net_phy.c ota.c bootsd.c osd_dib.c osd_info.c yrw801.c tr_bios.c bsp/xtopology_g.c bsp/xemacps_g.c esp_link.c esp_cmd.c esp_tcp.c esp_tsx.c esp_tls.c s3_link.c $LWC/apps/sntp/sntp.c
       $LWX/netif/xadapter.c $LWX/netif/xemacpsif.c $LWX/netif/xemacpsif_dma.c $LWX/netif/xemacpsif_hw.c $LWX/netif/xpqueue.c $LWX/sys_arch_raw.c
       $EMAC/xemacps.c $EMAC/xemacps_bdring.c $EMAC/xemacps_control.c $EMAC/xemacps_hw.c $EMAC/xemacps_intr.c $EMAC/xemacps_sinit.c
       $LWC/core/def.c $LWC/core/dns.c $LWC/core/inet_chksum.c $LWC/core/init.c $LWC/core/ip.c $LWC/core/mem.c $LWC/core/memp.c

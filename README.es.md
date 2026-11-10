@@ -2,7 +2,7 @@
 
 <p align="center"><b>MSXimus Z — un MSX2+ completo en la OMDAZZ ZYNQ MINI (XC7Z020)</b></p>
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/versi%C3%B3n-Z1.4.3-blue">
+  <img alt="version" src="https://img.shields.io/badge/versi%C3%B3n-Z1.4.4-blue">
   <img alt="fpga" src="https://img.shields.io/badge/FPGA-Xilinx%20Zynq%20XC7Z020-green">
   <img alt="license" src="https://img.shields.io/badge/licencia-GPLv3%20%2B%20componentes%20no%20comerciales-orange">
 </p>
@@ -48,42 +48,78 @@ El menú de arranque: RETURN lanza, ESC arranca MSX-DOS/Nextor, **S** Ajustes, *
 | | Qué | Notas |
 |---|---|---|
 | **Obligatorio** | **OMDAZZ ZYNQ MINI** (XC7Z020-CLG400) | 512 MB de DDR3, QSPI de 16 MB, dos ranuras microSD, USB host, HDMI, Ethernet, OLED. Todo lo que usa el MSXimus Z viene en la placa |
+| **Obligatorio** | Alimentación de 5 V por USB-C y una pantalla con **HDMI** | Sale a 720p, con el audio |
+| **Obligatorio** | **Teclado USB** y un adaptador de USB-C a USB-A (o un hub USB-C) para el conector **P3** | Hace falta para instalar (todo se hace desde el panel F12) y para usar el MSX |
+| **Obligatorio** | Una **microSD** para **TF1**, de 1 GB o más | Para instalar lleva el `BOOT.bin`; después guarda los **perfiles** del sistema (F12 → P). El MSX no la ve. La prepara la propia placa |
 | **Obligatorio** | Una **microSD** para **TF2** | La tarjeta del MSX: ROMs, discos, carpetas WaveGame. Particiones FAT16 para que el menú pueda escribir (partidas, descargas). La mejor forma de prepararla: [MSX SD Maker](https://github.com/Papipapito/SD_Maker) |
-| **Obligatorio** | Cable HDMI y alimentación por USB-C | |
-| Recomendado | Teclado USB | |
-| Opcional | Una **microSD** para **TF1** | Guarda los **perfiles** del sistema (F12 → P) y, con SW1 en SD, puede arrancar el PS. El MSX no la ve. La prepara la propia placa |
+| **Obligatorio** | Un **PC con lector de microSD** | Para copiar el `BOOT.bin` a TF1 y preparar TF2 (MSX SD Maker es para Windows) |
+| Recomendado | **Red**: cable Ethernet en **J3** con salida a Internet | Para la última versión (F12 → U), los perfiles (F12 → P → S) y File-Hunter. La IP la da el router. Sin red funciona igual, pero se queda en la versión instalada. J2 es del PL y no se usa |
+| Recomendado | Un disipador sobre el chip | Con él trabaja a unos 55 °C; sin él, a unos 80 |
+| Opcional | **Waveshare ESP32-S3-LCD-1.69** en el **CAM1** | La red por WiFi, con pantalla de estado, en vez del cable. Cuatro hilos, alimentada por su propio USB-C |
 | Opcional | Mando USB (HID), ratón USB, disquetera USB de 3,5" | Por un hub USB plano, varios a la vez. Mandos HID genéricos y XInput (Xbox 360 y receptores que se presentan como tal) |
-| Opcional | **Cable Ethernet** en **J3** | La red sin comprar nada más. J2 es del PL y no se usa |
-| Opcional | **Waveshare ESP32-S3-LCD-1.69** en el **CAM1** | WiFi, con pantalla de estado. Cuatro hilos, alimentada por su propio USB-C |
-| Solo una vez | **Vivado 2019.2** y el JTAG de la placa | Para grabar la primera imagen en la QSPI. Las siguientes llegan por la red |
+| Ya no hace falta | Vivado 2019.2 y el JTAG de la placa | La instalación se hace desde la microSD (Z1.4.4 o posterior). Vivado queda para el desarrollo o para instalar por JTAG |
 
 El interruptor de arranque **SW1**: **ON-ON = JTAG**, **ON-OFF = QSPI** (el uso normal), **OFF-OFF = SD** (TF1). Solo se lee al dar la corriente: el reset de la placa (PS_SRST) no lo relee.
 
-## Instalación
+## Puesta en funcionamiento
 
 Toda la máquina es **un solo fichero**, un `BOOT.bin`: FSBL, bitstream, companion, pack de BIOS y tabla de ondas del OPL4 juntos. La [release de GitHub](https://github.com/Papipapito/MSXimus_Z/releases/latest) trae cuatro, uno por variante, y el bitstream solo para cargarlo por JTAG:
 
 | Fichero | Menús | Nextor |
 |---|---|---|
-| `BOOT_Z1.4.3_nextor214.bin` | Castellano | **2** (el estable, el que quieres) |
-| `BOOT_Z1.4.3_nextor214-en.bin` | Inglés | 2 |
-| `BOOT_Z1.4.3_nextor3.bin` | Castellano | 3 |
-| `BOOT_Z1.4.3_nextor3-en.bin` | Inglés | 3 |
+| `BOOT_Z1.4.4_nextor214.bin` | Castellano | **2** (el estable, el que quieres) |
+| `BOOT_Z1.4.4_nextor214-en.bin` | Inglés | 2 |
+| `BOOT_Z1.4.4_nextor3.bin` | Castellano | 3 |
+| `BOOT_Z1.4.4_nextor3-en.bin` | Inglés | 3 |
 
 Los perfiles **Música**, **Dual**, **Turbo R** y **Turbo R V9990** se bajan desde la placa: F12 → P → S.
 
 La variante se puede cambiar después desde la página de actualización (F12 → U, flechas), así que la elección no es definitiva.
 
-### En la QSPI (lo recomendado, una vez)
+### Paso a paso, sin Vivado (Z1.4.4 o posterior)
 
-Así la placa arranca sola y se puede actualizar sola.
+Unos diez minutos. El detalle de cada paso, lo que se ve en pantalla y qué hacer si algo falla: [`docs/manual/02-instalacion.md`](docs/manual/02-instalacion.md#puesta-en-funcionamiento-paso-a-paso).
+
+**1. En el PC: la tarjeta de instalación**
+
+1. Baja de la release el `BOOT_*.bin` de la variante que quieras (si dudas, `nextor214`).
+2. Formatea la microSD de TF1 en **FAT32** (o FAT16). Windows solo ofrece FAT32 en tarjetas de hasta 32 GB.
+3. Copia el fichero a la **raíz** y renómbralo exactamente **`BOOT.bin`** (cuidado con las extensiones ocultas de Windows: que no quede `BOOT.bin.bin`).
+
+**2. Arrancar desde la SD**
+
+4. Sin corriente: la tarjeta en **TF1** (la ranura a la izquierda del HDMI, [foto](docs/manual/capturas/tf1-ranura.jpg)), la del MSX en **TF2** si ya la tienes, **SW1 en OFF-OFF** (SD), el HDMI, el teclado en **P3** y el cable de red en **J3**.
+5. Corriente: sale el logo y el menú, cargados desde la tarjeta.
+
+**3. Grabarlo en la QSPI**
+
+6. **F12 → U**: la página es *BOOT.bin de la SD* (abajo a la derecha pone `SD`).
+7. **A** lee el fichero y comprueba que es de esta placa: enseña su versión y su tamaño.
+8. **A, A** (dos veces seguidas) lo graba en la **ranura A**, la de fábrica: *Leer*, *Borrar*, *Grabar*, *Verif*, alrededor de un minuto. No apagues; si se va la luz, la SD sigue arrancando y se repite.
+
+**4. Arrancar desde la QSPI**
+
+9. Apaga, **SW1 en ON-OFF** (QSPI) y enciende: arranca sola. **F12 → U** dice «ranura A · de fábrica».
+
+**5. Dejarla al día**
+
+10. **F12 → P** prepara TF1 para los perfiles: la borra entera, `BOOT.bin` incluido (ya está en la QSPI), tras confirmar con **B** e **Intro**.
+11. **F12 → U** busca la última versión: **I** la instala en la ranura B y **R** reinicia con ella.
+12. **F12 → P → S** baja los perfiles.
+
+La ranura A no la tocan las actualizaciones: es la vuelta atrás (F12 → U, **F** dos veces y **R**).
+
+### Con Vivado (JTAG)
+
+La otra forma de grabar la imagen de fábrica, y la única con un `BOOT.bin` anterior a la Z1.4.4.
+
 
 1. Clona este repositorio y copia el `fsbl.elf` de la release en `fpga/zynq/arm/fsbl/`: Vivado lo usa de ayudante para grabar la flash. También se puede compilar con `fpga/zynq/arm/fsbl/build.sh`.
 2. Apaga, pon **SW1 en ON-ON** (JTAG), conecta el USB del JTAG de la placa, enciende y arranca `hw_server`.
 3. Desde `fpga/zynq`:
 
    ```
-   vivado -mode batch -source tools/qspi_program.tcl -tclargs program w25q128fv-qspi-x4-single BOOT_Z1.4.3_nextor214.bin
+   vivado -mode batch -source tools/qspi_program.tcl -tclargs program w25q128fv-qspi-x4-single BOOT_Z1.4.4_nextor214.bin
    ```
 
    Borra, graba y verifica, y acaba con `PROGRAM_OK`.
@@ -93,9 +129,9 @@ Esa es la **imagen de fábrica** (ranura A). Las actualizaciones por red no la t
 
 Si Vivado no ve el JTAG de la placa, hay que cambiar el `FTD2XX.dll` de Vivado por uno que conozca el FTDI de la placa.
 
-### Desde una microSD en TF1 (sin Vivado)
+### Solo probar una imagen, sin grabar
 
-Copia la imagen en la raíz de una microSD en FAT32, renómbrala exactamente `BOOT.bin`, ponla en **TF1**, **SW1 en OFF-OFF** y enciende. Sirve para probar una imagen sin grabar nada; la actualización por red necesita la instalación en la QSPI.
+Copia la imagen en la raíz de una microSD en FAT32 o FAT16, renómbrala exactamente `BOOT.bin`, ponla en **TF1**, **SW1 en OFF-OFF** y enciende: la placa arranca de la tarjeta sin tocar la QSPI. La actualización por red necesita la instalación en la QSPI.
 
 ### La tarjeta del MSX (TF2)
 
@@ -120,7 +156,7 @@ Todo lo demás, en [`docs/manual/12-actualizar.md`](docs/manual/12-actualizar.md
 **F12** congela el MSX y dibuja el panel sobre la imagen, en el idioma del menú. F12 otra vez y el juego sigue exactamente donde estaba.
 
 ```
-  MSXimus Z                          Z1.4.3
+  MSXimus Z                          Z1.4.4
   Sistema
     Temperatura    52,3°C  máx 55
     Tensiones (V)  1,00 · 1,80 · 1,00
@@ -178,7 +214,7 @@ fpga/zynq/arm/get_tinyusb.sh        # una vez (también get_minimp3.sh y get_mbe
 fpga/zynq/arm/companion/build.sh
 fpga/zynq/arm/fsbl/build.sh
 # 3. El pack de BIOS y las ondas, sacados de un BOOT.bin de la release
-python fpga/zynq/arm/boot/extraer_de_boot.py BOOT_Z1.4.3_nextor214-en.bin /tmp/publicado
+python fpga/zynq/arm/boot/extraer_de_boot.py BOOT_Z1.4.4_nextor214-en.bin /tmp/publicado
 # 4. Tu BOOT.bin                    -> fpga/zynq/arm/boot/BOOT.bin
 OTA_VERSION=dev fpga/zynq/arm/boot/make_boot.sh /tmp/publicado/pack.bin /tmp/publicado/yrw801.rom
 ```
@@ -189,7 +225,7 @@ La YRW801 (la tabla de ondas del OPL4, 2 MB) se puede sustituir por un fichero d
 
 ## Estado
 
-**La Z1.4.3 es la versión de GitHub y la última** (09/11/2026): la misma que ofrece la actualización por red (msx.barcelona). Se instala y con F12 → U se sigue al día. Ajustes sigue enseñando «Z1.4.1» (el PL no ha cambiado desde entonces); la versión del sistema, «Z1.4.3», sale en la cabecera del panel F12 y en la OLED.
+**La Z1.4.4 es la versión de GitHub y la última** (10/11/2026): la misma que ofrece la actualización por red (msx.barcelona). Se instala desde la propia microSD, sin Vivado, y con F12 → U se sigue al día. Ajustes sigue enseñando «Z1.4.1» (el PL no ha cambiado desde entonces); la versión del sistema, «Z1.4.4», sale en la cabecera del panel F12 y en la OLED.
 
 ## Documentación
 
@@ -219,6 +255,7 @@ docs/                 Manual de usuario y referencia técnica
 
 ## Últimas versiones
 
+- **Z1.4.4** (10/11, en GitHub y por la red): **la instalación ya no necesita Vivado**. Con SW1 en SD, la placa graba ella misma en su QSPI el `BOOT.bin` de una microSD FAT32 o FAT16 de TF1 (F12 → U, A, A, A) y, si la tarjeta no le sirve, dice qué ha encontrado en ella. Requisitos y puesta en funcionamiento paso a paso, aquí arriba y en el [capítulo 02 del manual](docs/manual/02-instalacion.md#puesta-en-funcionamiento-paso-a-paso). Un perfil solo se carga con el sistema de su misma serie: tras actualizar, vuelve a bajar los perfiles (F12 → P → S).
 - **Z1.4.3** (09/11, en GitHub y por la red): la microSD de **TF1** pasa a ser solo la tarjeta de los **perfiles** y el MSX ya no la ve (deja de ser la unidad B: de Nextor: los datos que tuviera hay que copiarlos antes a TF2); la placa prepara la tarjeta sola (F12 → P), con salvaguardas, y baja los perfiles por su cuenta; **`.dsk` de varios discos** (un fichero de N × 720 KB se monta como N unidades de Nextor) y tipo «Multidisco» en el menú; `NEXTOR.EMU` se reutiliza en las particiones FAT16 en lugar de perder un cluster por montaje; **Nextor 3.0 final**; el firmware del ESP32-S3 vive ya en su propio repositorio. Reúne la Z1.4.1 y la Z1.4.2, que no llegaron a publicarse por separado: la Z1.4.1 trajo el perfil **Turbo R V9990** (NEO-16 de hasta 16 MB), arregló las ROM de 4 MB o más lanzadas desde el menú en el perfil Turbo R e hizo arrancar *Illusion City* en `.DSK` en los dos perfiles Turbo R.
 - **Z1.4.0** (04/11, en GitHub y por la red): los **perfiles** (Música, Dual y Turbo R, que se bajan desde la placa: F12 → P → S), sprites del V9968 en SCREEN 10, 11 y 12, geo3d también en 8Dh/8Fh, los registros del PSG legibles por A2h y un cuelgue del USB arreglado.
 - **Z1.3.1** (30/10, solo por la actualización por red): escritorio vivo en el V9990 con el juego en la ventana (teclas V y B, para ROMs y también para discos `.dsk`): barra superior con la hora, tarjeta «NOW PLAYING» con el nombre del juego y tarjeta «SYSTEM» con la IP (cable o WiFi), temperatura, tiempo encendido, turbo de la CPU y USB; la hora viene de la red (SNTP por cable, NTP por la WiFi de la S3, horario de verano europeo) y, sin red, del reloj en hardware del gestor de ventanas (el RTC del MSX); las ROM con disco dentro (DSK2ROM, como *Sonyc*) ya arrancan, sin Nextor; la ventana conserva 8 puntos de borde a cada lado, así que los juegos que mueven la imagen con R#18 (*Sonyc*) ya no salen cortados; el V9968 a pantalla completa en **4:3 con Scale3x** (F12, la tecla V alterna 16:9 / 4:3; los modos de 512 puntos salen sin filtro); la máquina **ya no se identifica como turbo R** (solo queda el temporizador del sistema, puertos E6h/E7h, para las demos de geo3d); RETURN cambia la opción en Ajustes, igual que ESPACIO; la pantalla de pruebas (T) enseña bien la versión del core; la ventana V cabe en pantalla (las tarjetas del escritorio en modo V son más estrechas, de 19 caracteres, y WiFi/LAN va en la cabecera SYSTEM).

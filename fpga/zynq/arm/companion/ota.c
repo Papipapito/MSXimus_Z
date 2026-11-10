@@ -68,8 +68,9 @@
 #include "ota_clave.h"
 #include "profile.h"                                 /* PF_DATOS: la zona sin cache de los perfiles */
 #include "mxpf.h"
+#include "bootsd.h"                                  /* leer el BOOT.bin de la TF1 (ranura A desde la SD) */
 
-#define OTA_URL          "https://msx.barcelona/wp-content/ota/zynq/"   /* IONOS: el SFTP solo llega a wp-content */
+#define OTA_URL         "https://msx.barcelona/wp-content/ota/zynq/"   /* IONOS: el SFTP solo llega a wp-content */
 #define OTA_URL_BETA     OTA_URL "beta/"                                /* canal beta (Z1.3): ota_publicar.py --canal beta */
 #define OTA_PLACA        "zynq7020-mini"
 #define OTA_UDP          9474U
@@ -93,7 +94,8 @@
 
 #define DEVCFG_MULTIBOOT 0xF800702CU
 #define BOOT_MODE_REG    0xF800025CU
-#define SLCR_UNLOCK      0xF8000008U
+#define BOOT_MODO_SD     5U                          /* BOOT_MODE[2:0]: 1 = QSPI, 5 = SD, 0 = JTAG */
+#define SLCR_UNLOCK     0xF8000008U
 #define PSS_RST_CTRL     0xF8000200U
 #define MBOX             0x1FF00000U
 #define SDBOX            0x1FF00100U
@@ -107,10 +109,14 @@ typedef struct {
 } ota_mem_t;
 #define W ((ota_mem_t *)(OTA_MEM + 0x00800000U))
 
-enum { O_REPOSO = 0, O_BUSCA, O_MANIF, O_AL_DIA, O_HAY, O_BAJA, O_GRABA, O_LISTA, O_ERROR };
+/* O_SD_*: la placa arrancada desde SD graba la ranura A con el BOOT.bin de la TF1 (sin Vivado): leyendo, listo para grabar, grabada */
+enum { O_REPOSO = 0, O_BUSCA, O_MANIF, O_AL_DIA, O_HAY, O_BAJA, O_GRABA, O_LISTA, O_ERROR, O_SD_LEE, O_SD_LISTO, O_SD_HECHO };
 
 static u8  st, paso, sucio = 1;
-static u8  en_b, boot_qspi, reg_ok, reg_conf, reg_usados, info_ok, f_armada;
+static u8  en_b, boot_qspi, boot_sd, reg_ok, reg_conf, reg_usados, info_ok, f_armada;
+static u8  a_armada, a_sd;                            /* tecla A pulsada una vez; la grabacion en curso va a la ranura A (no a la B) */
+static u8  a_dg;                                      /* el error es "no es FAT16 ni FAT32": la linea de debajo dice lo que se vio (bootsd_diag) */
+static char a_ver[16], a_var[16];                     /* version y variante del BOOT.bin leido de la SD */
 static u8  beta_act, beta_pide;                       /* canal de la imagen que corre y el que se busca (1 = beta) */
 static u32 serie_act, reg_serie;
 static char ver_act[16], var_act[16], reg_ver[16];
@@ -302,6 +308,7 @@ void ota_arranque(void)
     u32 mb = Xil_In32(DEVCFG_MULTIBOOT) & 0x1FFFU;
     en_b = (mb == MB_B);
     boot_qspi = (Xil_In32(BOOT_MODE_REG) & 7U) == 1U;
+    boot_sd = (Xil_In32(BOOT_MODE_REG) & 7U) == BOOT_MODO_SD;
     t_arranque = sys_now();
     scpy(ver_act, "?", sizeof ver_act);
     info_leer();
@@ -311,7 +318,7 @@ void ota_arranque(void)
     reg_leer();
     if (en_b && !info_ok && reg_ok) { scpy(ver_act, reg_ver, sizeof ver_act); serie_act = reg_serie; }
     log_str("ota: ranura "); log_str(en_b ? "B" : "A"); log_str(" "); log_str(ver_act); log_str(" "); log_str(var_act);
-    log_str(boot_qspi ? " (QSPI)" : " (sin QSPI)");
+    log_str(boot_qspi ? " (QSPI)" : boot_sd ? " (SD)" : " (sin QSPI)");
     if (reg_ok) { log_str(", registro "); log_str(reg_ver); log_str(reg_conf ? " confirmada" : " sin confirmar"); }
     log_str("\n");
     if (!reg_ok || en_b) return;
@@ -911,10 +918,14 @@ static void reg_nuevo(u8 *r)
     wr32(r + 0x54, crc32(r, 0x54U));
 }
 
-/* grabacion de la B, paso a paso: 0 borra el registro, 1 borra bloques, 2 programa, 3 relee, 4 registro */
+/* grabacion de la B, paso a paso: 0 borra el registro, 1 borra bloques, 2 programa, 3 relee, 4 registro.
+ * Con a_sd (la placa arrancada desde SD, tecla A) graba la ranura A en 0 con el BOOT.bin de la SD: mismos pasos, sin el SHA-256 del
+ * manifiesto (la relectura se compara byte a byte con lo leido de la SD) y sin registro nuevo (queda borrado: no hay B). Si se va la luz
+ * a mitad la A queda mal, pero la SD sigue arrancando: se repite. */
 static void graba_poll(void)
 {
     u32 t = sys_now();
+    u32 base = a_sd ? 0U : SLOT_B;
     switch (paso) {
         case 0:
             qspi_erase4k_start(REG_ADDR);            /* desde aqui un apagon deja la A */
@@ -924,7 +935,7 @@ static void graba_poll(void)
         case 1:                                      /* bloques de 64 KB */
             if (qspi_busy()) break;
             if (pos >= ((len + 0xFFFFU) & ~0xFFFFU)) { paso = 2; pos = 0; log_str("ota: borrada en "); log_dec(t - t_paso); log_str(" ms\n"); t_paso = t; break; }
-            qspi_erase64k_start(SLOT_B + pos);
+            qspi_erase64k_start(base + pos);
             pos += 0x10000U;
             sucio = 1;
             break;
@@ -935,7 +946,7 @@ static void graba_poll(void)
                 if (qspi_busy()) continue;
                 if (pos >= len) { paso = 3; pos = 0; mbedtls_sha256_init(&W->sha); mbedtls_sha256_starts(&W->sha, 0); log_str("ota: grabada en "); log_dec(t - t_paso); log_str(" ms\n"); break; }
                 n = len - pos; if (n > 256U) n = 256U;
-                qspi_prog_start(SLOT_B + pos, IMG + pos, n);
+                qspi_prog_start(base + pos, IMG + pos, n);
                 pos += n;
                 pags++;
             } while (pags < 16U && sys_now() - t < 3U);
@@ -945,22 +956,32 @@ static void graba_poll(void)
         case 3: {                                    /* relectura: igual byte a byte y el SHA-256 del manifiesto */
             u32 n = len - pos, i;
             if (n > sizeof W->rb) n = sizeof W->rb;
-            qspi_read(SLOT_B + pos, W->rb, n);
+            qspi_read(base + pos, W->rb, n);
             for (i = 0; i < n; i++) if (W->rb[i] != IMG[pos + i]) break;
-            if (i < n) { log_str("ota: relectura distinta en "); log_hex(SLOT_B + pos + i); log_str("\n"); set_msg(T("Error al grabar la QSPI", "Flash write error")); st = O_ERROR; return; }
-            mbedtls_sha256_update(&W->sha, W->rb, n);
+            if (i < n) { log_str("ota: relectura distinta en "); log_hex(base + pos + i); log_str("\n"); set_msg(T("Error al grabar la QSPI", "Flash write error")); st = O_ERROR; a_sd = 0; return; }
+            if (!a_sd) mbedtls_sha256_update(&W->sha, W->rb, n);
             pos += n;
             if (pos >= len) {
                 u8 hash[32];
-                mbedtls_sha256_finish(&W->sha, hash); mbedtls_sha256_free(&W->sha);
-                for (i = 0; i < 32U; i++) if (hash[i] != IMGSEL.sha[i]) { set_msg(T("Error al grabar la QSPI", "Flash write error")); st = O_ERROR; return; }
-                paso = 4;
+                if (a_sd) { mbedtls_sha256_free(&W->sha); paso = 4; }          /* A: ya se ha comparado byte a byte con lo leido de la SD */
+                else {
+                    mbedtls_sha256_finish(&W->sha, hash); mbedtls_sha256_free(&W->sha);
+                    for (i = 0; i < 32U; i++) if (hash[i] != IMGSEL.sha[i]) { set_msg(T("Error al grabar la QSPI", "Flash write error")); st = O_ERROR; return; }
+                    paso = 4;
+                }
             }
             sucio = 1;
             break;
         }
         case 4: {
             u8 *r = W->reg;
+            if (a_sd) {                              /* la A grabada: el registro ya esta borrado (paso 0), asi que arranca la A */
+                a_sd = 0;
+                reg_leer();
+                log_str("ota: "); log_str(a_ver); log_str(" grabada en la ranura A desde la SD\n");
+                st = O_SD_HECHO; msg[0] = 0; sucio = 1;
+                break;
+            }
             reg_nuevo(r);
             qspi_prog_start(REG_ADDR, r, 256);
             qspi_wait();
@@ -1265,6 +1286,80 @@ int ota_perfil_baja(int i)
     return pst != 0;
 }
 
+/* ---- la ranura A desde la SD (10/11/2026) ----------------------------------------------------------------------------------------
+ * Con la placa arrancada desde SD (SW1 en SD) la tecla A de esta pagina lee el BOOT.bin de la TF1 a IMG (bootsd.c), comprueba que es de esta
+ * placa y, con una segunda A, lo graba en la ranura A de la QSPI (graba_poll con a_sd): la de fabrica, que hasta ahora solo grababa Vivado por
+ * JTAG. Despues: apagar, SW1 en QSPI, y ya funcionan la actualizacion por red a la B, los perfiles y la vuelta a fabrica. */
+static const char *a_valida(void)
+{
+    u32 i, a, sum = 0;
+    char v[16];
+    if (rd32(IMG + 0x20) != 0xAA995566U || rd32(IMG + 0x24) != 0x584C4E58U) return "no es un BOOT.bin";
+    for (a = 0x20U; a <= 0x44U; a += 4U) sum += rd32(IMG + a);
+    if (~sum != rd32(IMG + 0x48)) return "cabecera mala";
+    for (i = 0; i + 14U <= len; i++) {               /* su ota_info (la ultima particion; "MOTI1\n" suelto tambien lo lleva este programa) */
+        u32 n;
+        if (IMG[i] != 'M' || !pfx((const char *)IMG + i, "MOTI1\n") || !pfx((const char *)IMG + i + 6, "version=")) continue;
+        n = len - i < 256U ? len - i : 256U;
+        if (!campo((const char *)IMG + i, n, "placa", v, sizeof v) || !igual(v, OTA_PLACA)) return "es de otra placa";
+        if (!campo((const char *)IMG + i, n, "version", a_ver, sizeof a_ver)) return "sin version";
+        if (!campo((const char *)IMG + i, n, "variante", a_var, sizeof a_var)) a_var[0] = 0;
+        return 0;
+    }
+    return "sin particion ota_info";
+}
+
+static void a_error(int r)                            /* BSD_* -> lo que ve el usuario */
+{
+    set_msg(r == BSD_SIN_TARJETA ? T("No hay tarjeta en la TF1", "No card in TF1")
+          : r == BSD_SIN_FAT32 ? T("La TF1 no es FAT16 ni FAT32", "TF1 is not FAT16/FAT32")
+          : r == BSD_SIN_BOOT ? T("No hay BOOT.bin en la TF1", "No BOOT.bin on TF1")
+          : r == BSD_TAM ? T("BOOT.bin de tamaño raro", "BOOT.bin size is odd")
+          : r == BSD_CADENA ? T("BOOT.bin dañado en la TF1", "BOOT.bin damaged on TF1")
+          : T("Error leyendo la TF1", "TF1 read error"));
+    log_str("ota: BOOT.bin de la SD: error "); log_dec((u32)r);
+    a_dg = r == BSD_SIN_FAT32 && bootsd_diag()[0];
+    if (a_dg) { log_str(" ("); log_str(bootsd_diag()); log_str(")"); }
+    log_str("\n");
+    st = O_ERROR; a_sd = 0;
+}
+
+static void a_lee_inicia(void)
+{
+    u32 tam = 0;
+    int r = bootsd_abre(&tam);
+    a_armada = 0; a_sd = 0; a_dg = 0; msg[0] = 0;
+    if (r != BSD_OK) { a_error(r); return; }
+    len = tam; pos = 0; t_paso = sys_now(); a_ver[0] = 0; a_var[0] = 0;
+    st = O_SD_LEE; sucio = 1;
+    log_str("ota: leyendo BOOT.bin de la SD, "); log_dec(tam); log_str(" bytes\n");
+}
+
+static void a_lee_poll(void)                          /* trozos de 32 KB: los que quepan en 3 ms por vuelta */
+{
+    u32 t = sys_now();
+    sucio = 1;
+    do {
+        u32 n = 0;
+        int r = bootsd_sig(IMG + pos, &n);
+        if (r != BSD_OK) { a_error(r); return; }
+        if (n == 0) { a_error(BSD_CADENA); return; }  /* se acabo el fichero antes de tiempo */
+        pos += n;
+        if (pos >= len) {
+            const char *e = a_valida();
+            if (e) {
+                log_str("ota: BOOT.bin de la SD no vale: "); log_str(e); log_str("\n");
+                set_msg(igual(e, "es de otra placa") ? T("No es para esta placa", "Not for this board") : T("BOOT.bin no válido", "Invalid BOOT.bin"));
+                st = O_ERROR;
+                return;
+            }
+            log_str("ota: BOOT.bin de la SD: "); log_str(a_ver); log_str(" "); log_str(a_var); log_str(", leido en "); log_dec(sys_now() - t_paso); log_str(" ms\n");
+            st = O_SD_LISTO; msg[0] = 0;
+            return;
+        }
+    } while (sys_now() - t < 3U);
+}
+
 void ota_poll(void)
 {
     confirmar_poll();
@@ -1310,6 +1405,9 @@ void ota_poll(void)
         case O_GRABA:
             graba_poll();
             break;
+        case O_SD_LEE:
+            a_lee_poll();
+            break;
         default:
             break;
     }
@@ -1335,6 +1433,18 @@ void ota_tecla(u8 u)
     int ocupada = ota_ocupada();
     int eligiendo = (st == O_HAY || st == O_AL_DIA || st == O_LISTA);
     if (u != 0x09U) f_armada = 0;
+    if (u != 0x04U) a_armada = 0;
+    if (boot_sd) {                                   /* arrancada desde SD: aqui solo se graba la ranura A con el BOOT.bin de la TF1 */
+        if (u == 0x04U && !ocupada) {
+            if (st == O_SD_LISTO && !a_armada) { a_armada = 1; set_msg(T("A otra vez: graba la A", "A again: write slot A")); }
+            else if (st == O_SD_LISTO) {
+                a_armada = 0; msg[0] = 0;
+                a_sd = 1; paso = 0; pos = 0; t_paso = sys_now(); st = O_GRABA; sucio = 1;
+                log_str("ota: grabando la ranura A\n");
+            } else a_lee_inicia();                   /* en reposo, tras un error o tras grabar: leer (otra vez) el BOOT.bin */
+        }
+        return;
+    }
     switch (u) {
         case 0x18:                                   /* U: buscar */
             if (!ocupada) buscar();
@@ -1382,7 +1492,7 @@ int ota_cambio(void) { int c = sucio; sucio = 0; return c; }
  * progreso, 24-25 botones, 27 pie. Todo en las 30 columnas que se ven. */
 const char *ota_version(void) { return ver_act; }
 u32 ota_serie(void) { return serie_act; }                /* mxpf.c: un perfil solo se carga si es de esta serie */
-int ota_ocupada(void) { return st == O_BUSCA || st == O_MANIF || st == O_BAJA || st == O_GRABA || pst == 1; }   /* pst == 2 (instalando en la TF1) no: mxpf_instala lo mira */
+int ota_ocupada(void) { return st == O_BUSCA || st == O_MANIF || st == O_BAJA || st == O_GRABA || st == O_SD_LEE || pst == 1; }   /* pst == 2 (instalando en la TF1) no: mxpf_instala lo mira */
 
 /* lo que necesita la pagina Perfiles (perfiles.c) del servidor */
 int ota_srv_estado(void)
@@ -1416,6 +1526,7 @@ static void tarjeta_instalada(osd_pag p)
     osd_marco(p, 1, 3, 28, 4, PF, C_GRIS_OSC, T("Instalada", "Installed"), C_GRIS_CL);
     if (en_b && !reg_conf) { punto = C_AMARILLO; ranura = T("ranura B · a prueba", "slot B · on trial"); }
     else if (en_b) { punto = C_VERDE; ranura = T("ranura B · actualización", "slot B · update"); }
+    else if (boot_sd) { punto = C_AMARILLO; ranura = T("arranque desde la SD", "booted from the SD"); }
     else { punto = C_VERDE; ranura = T("ranura A · de fábrica", "slot A · factory"); }
     osd_car(p, 3, 4, OSD_A(PF, punto), G_CIRCULO);
     {
@@ -1465,6 +1576,35 @@ static void tarjeta_servidor(osd_pag p)
     }
     for (i = 0; i < mf.nn; i++)                      /* notas: 25 columnas dentro de la tarjeta (por caracteres, no bytes) */
         osd_txt_n(p, 3, 11 + (int)i, OSD_A(PF, C_GRIS_CL), mf.notas[i], 25);
+}
+
+/* arrancada desde SD: la tarjeta de en medio es el BOOT.bin de la TF1 (en lugar del servidor) */
+static void tarjeta_sd(osd_pag p)
+{
+    char b[48], *q;
+    int hay = (st == O_SD_LEE || st == O_SD_LISTO || st == O_GRABA || st == O_SD_HECHO);
+    osd_marco(p, 1, 8, 28, 7, PF, hay ? C_CIAN : C_GRIS_OSC, T("BOOT.bin de la SD", "BOOT.bin on the SD"), hay ? C_CIAN : C_GRIS_CL);
+    if (!hay) {
+        int x = osd_txt(p, 3, 10, OSD_A(PF, C_GRIS), T("Pulsa", "Press"));
+        x = osd_pastilla(p, x + 1, 10, PF, C_AMARILLO, C_NEGRO, " A ");
+        osd_txt(p, x + 1, 10, OSD_A(PF, C_GRIS), T("para leer el", "to read the"));
+        osd_txt(p, 3, 11, OSD_A(PF, C_GRIS), T("BOOT.bin de la TF1.", "BOOT.bin from TF1."));
+        osd_txt(p, 3, 12, OSD_A(PF, C_GRIS_CL), T("Se graba en la ranura A", "It is written to slot A"));
+        osd_txt(p, 3, 13, OSD_A(PF, C_GRIS_CL), T("(la de fábrica, en QSPI)", "(factory image, in QSPI)"));
+        return;
+    }
+    if (st == O_SD_LEE) {
+        osd_car(p, 3, 10, OSD_A(PF, C_CIAN), (u8)(G_GIRO0 + (sys_now() / 250U) % 4U));
+        osd_txt(p, 5, 10, OSD_A(PF, C_BLANCO), T("Leyendo el BOOT.bin…", "Reading BOOT.bin…"));
+        return;
+    }
+    osd_car(p, 3, 9, OSD_A(PF, st == O_SD_HECHO ? C_VERDE : C_AMARILLO), st == O_SD_HECHO ? G_OK : G_ESTRELLA);
+    osd_txt(p, 5, 9, OSD_A(PF, C_BLANCO), a_ver);
+    osd_txt_der(p, 27, 9, OSD_A(PF, C_GRIS), var_corto(a_var));
+    q = osd_fijo(b, (u32)((u64)len * 10U / 1048576U), 1); put_s(q, " MB");
+    osd_txt(p, 5, 10, OSD_A(PF, C_GRIS_CL), b);
+    osd_txt(p, 3, 12, OSD_A(PF, C_GRIS_CL), T("Reemplaza la de fábrica.", "Replaces the factory one."));
+    osd_txt(p, 3, 13, OSD_A(PF, C_GRIS), T("Si se apaga, se repite.", "If it fails, redo it."));
 }
 
 /* una fila de eleccion: etiqueta, dos pastillas (la elegida en cian) y la pista de teclas */
@@ -1545,15 +1685,26 @@ static void estado(osd_pag p)
             osd_txt(p, 3, 22, OSD_A(PF, C_VERDE), T("Grabada en la ranura B", "Written to slot B"));
             if (!aviso_perfiles()) osd_txt(p, 3, 23, OSD_A(PF, C_GRIS), T("Si no arranca, vuelve la A", "If it fails, slot A returns"));
             break;
+        case O_SD_LISTO:
+            osd_car(p, 1, 22, OSD_A(PF, C_AMARILLO), G_ESTRELLA);
+            osd_txt(p, 3, 22, OSD_A(PF, C_AMARILLO), T("Lista para grabar en la A", "Ready to write to slot A"));
+            break;
+        case O_SD_HECHO:
+            osd_car(p, 1, 22, OSD_A(PF, C_VERDE), G_OK);
+            osd_txt(p, 3, 22, OSD_A(PF, C_VERDE), T("Grabada en la ranura A", "Written to slot A"));
+            osd_txt(p, 3, 23, OSD_A(PF, C_BLANCO), T("Apaga y pon SW1 en QSPI", "Power off, SW1 to QSPI"));
+            return;
+        case O_SD_LEE:
         case O_BAJA:
         case O_GRABA: {
-            u32 actual = st == O_BAJA ? 0U : paso <= 1U ? 1U : paso == 2U ? 2U : 3U;
+            int sd = (st == O_SD_LEE || a_sd);       /* ranura A desde la SD: el primer paso es leer, no bajar */
+            u32 actual = (st == O_BAJA || st == O_SD_LEE) ? 0U : paso <= 1U ? 1U : paso == 2U ? 2U : 3U;
             u32 hecho = st == O_BAJA ? h.got : pos, total = st == O_GRABA && paso <= 1U ? ((len + 0xFFFFU) & ~0xFFFFU) : len;
             for (i = 0; i < 4U; i++) {
                 static const int col[4] = { 1, 8, 16, 23 };
                 u8 c = i < actual ? C_VERDE : i == actual ? C_AMARILLO : C_GRIS;
                 osd_car(p, col[i], 20, OSD_A(PF, c), i < actual ? G_OK : i == actual ? G_TRI_DER : G_ARO);
-                osd_txt(p, col[i] + 1, 20, OSD_A(PF, c), osd_ingles ? pasos_en[i] : pasos_es[i]);
+                osd_txt(p, col[i] + 1, 20, OSD_A(PF, c), (sd && i == 0U) ? T("Leer", "Read") : osd_ingles ? pasos_en[i] : pasos_es[i]);
             }
             osd_barra(p, 1, 21, 23, PF, C_VERDE, C_GRIS_OSC, hecho, total);
             q = osd_num(b, total ? (u32)((u64)hecho * 100U / total) : 0U); put_s(q, "%");
@@ -1564,6 +1715,13 @@ static void estado(osd_pag p)
                 q = osd_fijo(q, (u32)((u64)len * 10U / 1048576U), 1); q = put_s(q, " MB");
                 if (ms > 500U) { q = put_s(q, " · "); q = osd_num(q, (u32)((u64)h.got * 1000U / 1024U / ms)); put_s(q, " KB/s"); }
                 osd_txt(p, 1, 22, OSD_A(PF, C_GRIS), b);
+            } else if (st == O_SD_LEE) {
+                q = osd_fijo(b, (u32)((u64)pos * 10U / 1048576U), 1); q = put_s(q, T(" de ", " of "));
+                q = osd_fijo(q, (u32)((u64)len * 10U / 1048576U), 1); put_s(q, " MB");
+                osd_txt(p, 1, 22, OSD_A(PF, C_GRIS), b);
+            } else if (a_sd) {
+                osd_txt(p, 1, 22, OSD_A(PF, C_GRIS_CL), T("No apagues la placa.", "Don't power off the board."));
+                osd_txt(p, 1, 23, OSD_A(PF, C_GRIS), T("Si se apaga, repítelo.", "If it does, redo it."));
             } else {
                 osd_txt(p, 1, 22, OSD_A(PF, C_GRIS_CL), T("No apagues la placa.", "Don't power off the board."));
                 osd_txt(p, 1, 23, OSD_A(PF, C_GRIS), T("Si se apaga, arranca la A.", "If it does, slot A boots."));
@@ -1573,7 +1731,8 @@ static void estado(osd_pag p)
         case O_ERROR:
             osd_car(p, 1, 22, OSD_A(PF, C_ROJO), G_NO);
             osd_txt(p, 3, 22, OSD_A(PF, C_ROJO), msg);
-            osd_txt(p, 3, 23, OSD_A(PF, C_GRIS), T("U lo intenta otra vez", "U tries again"));
+            osd_txt(p, 3, 23, OSD_A(PF, C_GRIS), boot_sd && a_dg ? bootsd_diag()                  /* lo que se vio en la TF1 */
+                                                 : boot_sd ? T("A lo intenta otra vez", "A tries again") : T("U lo intenta otra vez", "U tries again"));
             return;
         default:
             break;
@@ -1592,6 +1751,11 @@ static void botones(osd_pag p)
     int x = 1;
     if (ota_ocupada()) {
         osd_boton(p, 1, 25, PF, C_GRIS_CL, "ESC", T("Ocultar (sigue)", "Hide (keeps going)"));
+        return;
+    }
+    if (boot_sd) {                                   /* arrancada desde SD: leer el BOOT.bin y grabar la ranura A */
+        osd_boton(p, 1, 24, PF, C_AMARILLO, "A", st == O_SD_LISTO ? T("Grabar la A", "Write slot A") : T("Leer BOOT.bin", "Read BOOT.bin"));
+        osd_boton(p, 1, 25, PF, C_GRIS_CL, "ESC", T("Volver", "Back"));
         return;
     }
     if (st == O_HAY) x = osd_boton(p, x, 24, PF, C_AMARILLO, "I", T("Instalar", "Install"));
@@ -1616,7 +1780,7 @@ static void pie(osd_pag p)
         if (wifi) put_s(q, " WiFi");
         osd_txt(p, 3, 27, OSD_A(PF, C_GRIS), b);
     } else osd_txt(p, 3, 27, OSD_A(PF, C_NARANJA), T("sin red: cable o WiFi", "no network: cable or WiFi"));
-    osd_txt_der(p, 29, 27, OSD_A(PF, C_GRIS_OSC), boot_qspi ? "QSPI" : "JTAG");
+    osd_txt_der(p, 29, 27, OSD_A(PF, C_GRIS_OSC), boot_qspi ? "QSPI" : boot_sd ? "SD" : "JTAG");
 }
 
 void ota_pagina(osd_pag p)
@@ -1624,9 +1788,12 @@ void ota_pagina(osd_pag p)
     osd_limpia(p, OSD_A(PF, C_BLANCO));
     osd_cabecera(p, G_BAJAR, T("Actualizar por red", "Network update"), NULL);
     tarjeta_instalada(p);
-    tarjeta_servidor(p);
-    canal(p);
-    eleccion(p);
+    if (boot_sd) tarjeta_sd(p);                      /* arrancada desde SD: el BOOT.bin de la TF1, no el servidor */
+    else {
+        tarjeta_servidor(p);
+        canal(p);
+        eleccion(p);
+    }
     estado(p);
     botones(p);
     pie(p);

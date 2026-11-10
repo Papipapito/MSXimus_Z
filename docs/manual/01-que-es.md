@@ -44,14 +44,14 @@ El menú de arranque es el del MSXimus, de 32 KB en ROM: RETURN lanza, ESC arran
 |---|---|---|
 | **Obligatorio** | La placa **OMDAZZ ZYNQ MINI** | Con el XC7Z020-CLG400, 512 MB de DDR3, QSPI de 16 MB, dos ranuras microSD, USB host, HDMI, Ethernet y la OLED. Todo lo que usa el MSXimus Z viene soldado; no hay módulos que comprar aparte |
 | **Obligatorio** | Una **microSD** en la ranura **TF2** | Es la "SD" del MSX: ROMs, discos y carpetas WaveGame. La primera partición en **FAT16** para que el menú pueda escribir (guardados, descargas); con FAT32 solo lee. El [capítulo 03](03-tarjeta-sd.md) explica cómo prepararla |
-| **Obligatorio** | El `BOOT.bin` grabado en la **QSPI**, o en una segunda **microSD** en **TF1** (en la raíz, en FAT32) | Las dos formas de arrancar sin PC. El interruptor **SW1** elige entre ellas y solo se lee al dar la corriente; el reset de la placa (PS_SRST) no lo relee. El [capítulo 02](02-instalacion.md) explica cómo grabar la QSPI y de dónde sale el `BOOT.bin`; la actualización por red necesita la QSPI |
-| **Obligatorio** | Cable HDMI y la alimentación por el USB-C de la placa | |
-| Recomendado | Teclado USB | Sin él se arranca, pero poco más |
+| **Obligatorio** | Una segunda **microSD** para **TF1**, de 1 GB o más | Para instalar: con el `BOOT.bin` en la raíz (FAT32 o FAT16) la placa arranca de ella y lo graba en su QSPI ([capítulo 02](02-instalacion.md), *Puesta en funcionamiento*). Después es la tarjeta de los **perfiles** del sistema, que prepara la propia placa ([capítulo 03](03-tarjeta-sd.md)). El interruptor **SW1** elige si se arranca de la QSPI o de TF1 y solo se lee al dar la corriente |
+| **Obligatorio** | Cable HDMI y la alimentación (5 V) por el USB-C de la placa | |
+| **Obligatorio** | Teclado USB, con un adaptador de USB-C a USB-A (o un hub USB-C) para el conector P3 | La instalación se hace desde el panel F12, y el MSX se usa con él |
+| **Obligatorio** | Un PC con lector de microSD | Para copiar el `BOOT.bin` a TF1 y preparar TF2 con MSX SD Maker (para Windows) |
 | Opcional | Mando USB HID, ratón USB y disquetera USB | Un hub USB vale para enchufar varios a la vez |
-| Opcional | **Cable Ethernet** en **J3** | La red sin comprar nada más. J2 es del PL y no se usa |
-| Opcional | Segunda **microSD** en **TF1** (de 1 GB o más) | La tarjeta de los **perfiles** del sistema; la prepara la propia placa ([capítulo 03](03-tarjeta-sd.md)) |
-| Opcional | **Waveshare ESP32-S3-LCD-1.69** | La WiFi, con pantalla de estado, para quien no use el cable. Cuatro hilos al CAM1 (pines 26, 28, 30 y la masa), alimentada por su propio USB-C. El firmware está en `esp32/`. Capítulos [02](02-instalacion.md) y [07](07-wifi-file-hunter.md) |
-| Solo una vez | Vivado 2019.2 y el JTAG de la placa | Para grabar la primera imagen en la QSPI (con el arranque por SD desde TF1 no hace falta). Las siguientes llegan por la red. También sirve para compilar el PL y arrancar por JTAG |
+| Recomendado | **Cable Ethernet** en **J3**, con salida a Internet | Para la última versión (F12 → U), los perfiles y File-Hunter. Sin red funciona igual, pero se queda en la versión instalada. J2 es del PL y no se usa |
+| Opcional | **Waveshare ESP32-S3-LCD-1.69** | La WiFi, con pantalla de estado, para quien no use el cable. Cuatro hilos al CAM1 (pines 26, 28, 30 y la masa), alimentada por su propio USB-C. El firmware está en su propio repositorio, [`Papipapito/ESP32-for-FPGA`](https://github.com/Papipapito/ESP32-for-FPGA) (rama `c6`). Capítulos [02](02-instalacion.md) y [07](07-wifi-file-hunter.md) |
+| Ya no hace falta | Vivado 2019.2 y el JTAG de la placa | La primera imagen se graba desde la propia microSD (Z1.4.4 o posterior); las siguientes llegan por la red. Vivado queda para instalar por JTAG, compilar el PL y arrancar por JTAG en desarrollo |
 
 Se recomienda un disipador sobre el chip: con él trabaja a unos 55 °C y sin él a unos 80 (el panel F12 y la OLED enseñan la temperatura).
 
