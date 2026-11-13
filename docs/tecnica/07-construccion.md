@@ -49,7 +49,7 @@ vivado -mode batch -source build.tcl -tclargs bit   # unos 15 min -> msximus_zyn
 
 `… bit dual` construye el perfil **Dual** (31/10/2026, prueba de concepto; capítulo [14](14-perfil-dual.md)): sin geo3d ni OPL4 (`ENABLE_OPL4FM` y `ENABLE_OPL4_WAVE` sin definir) y con una segunda máquina MSX2+ (`fpga/zynq/msx_b.v`, `fpga/zynq/axi_arb2w.v`) cuya imagen es un rectángulo del frame buffer del V9990 (`fpga/video720/bwin_fb.v`, por el `S_AXI_GP0`). Fija `PERFIL_DUAL`, quita de la lista de fuentes `fpga/geo3d`, añade esos tres ficheros (y, desde la Z1.3.2b8, `fpga/zynq/dual_mute.v`: el silencio por máquina) y usa sufijo y proyecto `_dual` (`vivado_prj_dual`, `msximus_zynq_dual.bit`, `util_dual.rpt`…). `files/dual/LEEME.txt` trae las cifras, el `.mxp` y cómo probarlo.
 
-`… bit tr` construye el perfil **TR** (Turbo R, fase 1, 02/11/2026, trabajo en curso; capítulo [15](15-perfil-tr.md)): sin geo3d, sin V9990 (chip, puente, árbitros del GP1 y puerto del ARM), sin OPL4 (`ENABLE_OPL4FM`, `ENABLE_OPL4_WAVE` y `wave_axi`) y sin Y8950 (`ENABLE_Y8950*`, `jtopl`, `jt10`, `y8950_adpcm`, `adpcm_sdram`). Fija `PERFIL_TR` (el top lo convierte en `ENABLE_TR`), sufijo `_tr` y proyecto `vivado_prj_tr`. Se queda `video720/v9990_fb.v` porque `msx2hdmi_v9968` lo instancia para su frame buffer.
+`… bit tr` construye el perfil **TR** (Turbo R, publicado desde la Z1.4.0; capítulo [15](15-perfil-tr.md), y `… bit trv` su variante con V9990): sin geo3d, sin V9990 (chip, puente, árbitros del GP1 y puerto del ARM), sin OPL4 (`ENABLE_OPL4FM`, `ENABLE_OPL4_WAVE` y `wave_axi`) y sin Y8950 (`ENABLE_Y8950*`, `jtopl`, `jt10`, `y8950_adpcm`, `adpcm_sdram`). Fija `PERFIL_TR` (el top lo convierte en `ENABLE_TR`), sufijo `_tr` y proyecto `vivado_prj_tr`. Se queda `video720/v9990_fb.v` porque `msx2hdmi_v9968` lo instancia para su frame buffer.
 
 `… bit trv` construye el perfil **TRV** (capítulo [15](15-perfil-tr.md), sección 30): el TR con V9990 y megaram de 16 MB, sin Y8950. Salidas con sufijo `_trv`. `BUILD_TAG` y `PLACE_DIR` en el entorno lanzan varias colocaciones en paralelo (`BUILD_TAG=a` da el proyecto `vivado_prj_trv_a`), y `NEO16M=1` activa los 16 MB en cualquier perfil.
 
@@ -83,7 +83,7 @@ Los dos son *bare-metal*, sin SDK ni Vitis: compilan los fuentes del BSP *standa
 
 ## 4. El menú, el driver de Nextor y los packs
 
-> **Esta sección no se reproduce desde un clon público.** El fuente del menú y de los drivers está en `bios/`, pero `build.sh` necesita la FM-BIOS base y `hacer_packs.py` los packs base, que llevan ROM de sistema con copyright y están en un repositorio privado. Las herramientas externas que necesita (`asmsx`, `zx0`) se descargan aparte: véase `bios/README.md`. Quien no tenga ese repositorio parte de los packs de un `BOOT.bin` publicado (sección 5).
+> **Esta sección no se reproduce desde un clon público.** El fuente del menú y de los drivers (`bios/`) no está en esta copia: `build.sh` necesita la FM-BIOS base y `hacer_packs.py` los packs base, que llevan ROM de sistema con copyright y están en un repositorio privado. Queda descrito como referencia de cómo se hace. Quien no tenga ese repositorio parte de los packs de un `BOOT.bin` publicado (sección 5).
 
 ```
 cd bios
@@ -108,7 +108,7 @@ python tools/hacer_packs.py         # los packs de BIOS
 
 ```
 cd fpga/zynq/arm/boot
-OTA_VERSION=Z1.3.1 OTA_SERIE=2026103002 ./make_boot.sh [pack.bin] [yrw801.rom]
+OTA_VERSION=Z1.4.9 OTA_SERIE=2026111301 ./make_boot.sh [pack.bin] [yrw801.rom]
 ```
 
 Sin argumentos usa el pack de Nextor 2.1.4 en castellano y la `yrw801.rom` de `packs/zynq/` del repositorio privado de BIOS (`MSXIMUS_BIOS_PRIV`, por defecto `../../../../../bios-msxnano-msximus`). Sin acceso a él, hay que darle los dos ficheros: se sacan de un `BOOT.bin` publicado con `python extraer_de_boot.py BOOT_<versión>_<variante>.bin <carpeta>` (en una carpeta que no sea la de `make_boot.sh`, que copia aquí el pack y la ROM de ondas con esos mismos nombres) y se pasan como `./make_boot.sh <carpeta>/pack.bin <carpeta>/yrw801.rom`. La ROM de ondas puede ser también un fichero de 2 MB a ceros. Comprueba que existen `fsbl.elf`, `companion.elf`, el bitstream (`fpga/zynq/msximus_zynq.bit`), el pack y la ROM de ondas; genera `boot.bif` y llama a `bootgen`. El orden de las particiones es el del `.bif`, y el bitstream tiene que ir justo detrás del FSBL:
@@ -145,15 +145,17 @@ Opcional en la Zynq: sin él, el companion hace de «ESP32» por el Ethernet de 
 
 | Qué | Dónde | Cómo se ve |
 |---|---|---|
-| Versión del core | `FPGA_VERSION` en `fpga/zynq/top_zynq.v` (`A4h` = Z1.4), puerto 2Fh | Ajustes → «Version FPGA»: «Z1.4» (`ver_pnib`, `bios/src/e7_rutinas.asm`) |
-| Tercer dígito | `FPGA_PATCH` en `top_zynq.v` (hoy 0), puerto 29h | Detrás de la versión, en decimal (1..99). El menú no imprime el 0 |
-| Versión y serie de la imagen | `OTA_VERSION` y `OTA_SERIE` de `make_boot.sh` → `ota_info` | El panel F12 y la actualización por red |
+| Versión del PL | `FPGA_VERSION` en `fpga/zynq/top_zynq.v` (`A4h` = Z1.4), puerto 2Fh | `INP(&H2F)`; el menú de pruebas |
+| Tercer dígito del PL | `FPGA_PATCH` en `top_zynq.v` (hoy 7), puerto 29h | `INP(&H29)`, en decimal (1..99) |
+| Versión y serie de la imagen | `OTA_VERSION` y `OTA_SERIE` de `make_boot.sh` → `ota_info` | El panel F12, la OLED, la actualización por red y, desde la Z1.4.9, Ajustes → «Version FPGA» (el companion la pone en el pack: `ota_menu_version`) |
 
-Regla: los lotes de arreglos suben el tercer dígito. **`FPGA_PATCH` es del bitstream**: solo se toca si cambia el PL, y se sube a la vez en la versión que lo lleva; Ajustes lo pinta en decimal (1..99). Una versión menor nueva (Z1.3) sube `FPGA_VERSION` (A3h) y vuelve a `FPGA_PATCH` 0. Dos imágenes con el mismo bitstream se distinguen por `OTA_VERSION`/`OTA_SERIE`; el companion decide si hay actualización comparando solo la **serie**.
+Regla: los lotes de arreglos suben el tercer dígito. **`FPGA_PATCH` es del bitstream**: solo se toca si cambia el PL, y se sube a la vez en la versión que lo lleva. Una versión menor nueva (Z1.3) sube `FPGA_VERSION` (A3h) y vuelve a `FPGA_PATCH` 0. Dos imágenes con el mismo bitstream se distinguen por `OTA_VERSION`/`OTA_SERIE`; el companion decide si hay actualización comparando solo la **serie**.
 
 ## 9. Cómo se generan las imágenes de BOOT y la actualización por red
 
-Las cuatro variantes (`nextor214`, `nextor3`, `nextor214-en` y `nextor3-en`) salen de una vuelta de `make_boot.sh` por pack, con los mismos `OTA_VERSION` y `OTA_SERIE` en las cuatro, y cada resultado se guarda con el nombre `BOOT_<versión>_<variante>.bin`. Las cuatro miden lo mismo (6.159.424 bytes) y comparten FSBL, bitstream, companion, `zeros` y tabla de ondas; cambian el pack y `ota_info`. La serie tiene que crecer siempre: una placa solo ofrece las series mayores que la suya, así que publicar una menor o igual no actualiza a nadie.
+Las cuatro variantes (`nextor214`, `nextor3`, `nextor214-en` y `nextor3-en`) salen de una vuelta de `make_boot.sh` por pack, con los mismos `OTA_VERSION` y `OTA_SERIE` en las cuatro, y cada resultado se guarda con el nombre `BOOT_<versión>_<variante>.bin`. Las cuatro miden lo mismo (6.377.024 bytes las de la Z1.4.9) y comparten FSBL, bitstream, companion, `zeros` y tabla de ondas; cambian el pack y `ota_info`. La serie tiene que crecer siempre: una placa solo ofrece las series mayores que la suya, así que publicar una menor o igual no actualiza a nadie.
+
+La release de GitHub lleva esas cuatro imágenes y **MSXimusZboot** para Windows y macOS, el programa que prepara con ellas la tarjeta de instalación (sale del repositorio [SD_Maker](https://github.com/Papipapito/SD_Maker)); ni el `.bit` ni el `fsbl.elf`: quien graba por JTAG los compila.
 
 La actualización por red se puede probar en local, sin servidor externo:
 

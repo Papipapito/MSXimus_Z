@@ -2,7 +2,7 @@
 
 # Documentación del MSXimus Z
 
-La documentación del **MSXimus Z**, el MSX2+ en la placa OMDAZZ **ZYNQ MINI** (XC7Z020), al día con la versión **Z1.3.1**. Describe esta placa y solo esta placa: lo que se lee aquí es lo que hace la máquina que se tiene delante.
+La documentación del **MSXimus Z**, el MSX2+ en la placa OMDAZZ **ZYNQ MINI** (XC7Z020), al día con la versión **Z1.4.9**. Describe esta placa y solo esta placa: lo que se lee aquí es lo que hace la máquina que se tiene delante.
 
 Son dos documentos distintos y se pueden leer por separado:
 
@@ -11,13 +11,15 @@ Son dos documentos distintos y se pueden leer por separado:
 
 Idioma: castellano en las dos partes. El README de la raíz está también en inglés.
 
+**Sobre esta copia pública.** La referencia técnica es la del repositorio de desarrollo y cita carpetas que aquí no están: `bios/` (el menú de arranque, los drivers de Nextor y las herramientas de los packs, ligados a ROM con copyright), `files/` y `archivo/` (entregas y binarios) y los bancos de pruebas (`fpga/zynq/tb/`, `fpga/zynq/arm/companion/tests/`, `tools/v9968_sim/` y parecidos). Lo que sí se construye desde aquí está en el capítulo [07](tecnica/07-construccion.md).
+
 ## Cómo está organizada
 
 | Carpeta | Para quién | Qué contiene |
 |---|---|---|
-| [`manual/`](manual/) | Quien tiene la placa y quiere usarla | Los doce capítulos del manual |
-| [`tecnica/`](tecnica/) | Quien quiere entender o modificar el core | Los catorce capítulos de la referencia, con el changelog |
-| `img/` | Material de apoyo | Fotos del V9968 en marcha y capturas de geo3d |
+| [`manual/`](manual/) | Quien tiene la placa y quiere usarla | La guía rápida y los doce capítulos del manual |
+| [`tecnica/`](tecnica/) | Quien quiere entender o modificar el core | Los quince capítulos de la referencia, con el changelog |
+| `img/` | Material de apoyo | Capturas de la salida HDMI (escritorio, perfiles, demos del V9968), fotos del V9968 en marcha y capturas de geo3d |
 | `logo/` | Material de apoyo | El logo «MSXimus z»: los dos SVG, la imagen fuente de la pantalla de arranque, su vista previa y el binario de 16 KB que va dentro del pack de BIOS |
 | [`geo3d_integration_notes.md`](geo3d_integration_notes.md) | Quien integra geo3d en otro diseño | Notas en inglés de cómo entró geo3d en el MSXimus Z |
 
@@ -57,8 +59,7 @@ Idioma: castellano en las dos partes. El README de la raíz está también en in
 | 12 | [El companion](tecnica/12-companion.md) | El programa del ARM: construcción, arranque, bucle principal, buzón, cada módulo, dependencias y depuración |
 | 13 | [El V9990 y geo3d](tecnica/13-v9990-geo3d.md) | El tiny9990, su VRAM, el puente al HDMI, y el coprocesador 3D de Alex Moncks |
 | 14 | [El perfil Dual](tecnica/14-perfil-dual.md) | Dos MSX a la vez (prueba de concepto, V9990 dentro y OPL4 fuera): la máquina B, su control por el buzón, su imagen como rectángulo del frame buffer del V9990, el reparto de la DDR y de los puertos AXI y los bancos |
-
-| 15 | [El perfil TR](tecnica/15-perfil-tr.md) | Base limpia para un turbo R (trabajo en curso, fase 1): el MSX2+ sin geo3d, V9990, OPL4 ni Y8950; el vídeo con el compositor fijo, los puertos y el aviso al companion |
+| 15 | [El perfil TR](tecnica/15-perfil-tr.md) | Los perfiles Turbo R y Turbo R V9990: el R800 y el Z80 con cambio en caliente, el regulador de velocidad del R800, la BIOS del turbo R, el PCM, el mapper de 2 MB, los puertos y el aviso al companion |
 
 ## Otros documentos del repositorio
 

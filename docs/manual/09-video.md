@@ -78,13 +78,13 @@ El V9968 y el V9990 salen por una sola HDMI y el panel F12 se dibuja encima de e
 
 | Bloque | Qué dice |
 |---|---|
-| Cabecera | `MSXimus Z` y la versión instalada (por ejemplo `Z1.3.1`) |
+| Cabecera | `MSXimus Z` y la versión instalada (por ejemplo `Z1.4.9`) |
 | Sistema | **Temperatura** del chip (die) y la máxima registrada, en verde por debajo de 60 °C, en amarillo hasta 75 y en rojo por encima; **tensiones** Vint, Vaux y Vbram (alimentaciones internas, leídas por el XADC del Zynq); y el tiempo **encendida** |
 | Tarjeta SD | La de TF2: tamaño en MB y, si los hay, el número de errores; o `sin tarjeta` |
 | USB | Cuántos dispositivos hay y de qué tipo (teclados, ratones, mandos, discos, hubs) |
-| MSX | `Z80 3,58 MHz` o `5,37 MHz` con `turbo` (el turbo va en **F11**); `SCREEN` actual y el vídeo en la HDMI (`V9968` o `V9990`); y la comprobación de la tabla de ondas del MoonSound: `YRW801 OK`, `YRW801 no válida` o `comprobando` |
-| Red | La IP del cable (J3), o `sin cable o sin IP` |
-| Pie | Los botones **U** (actualizar), **V** (16:9 o 4:3) y **F12** (salir), y el aviso de que el MSX está en pausa |
+| MSX | `Z80 3,58 MHz` o `5,37 MHz` con `turbo` (el turbo va en **F11**); en los perfiles Turbo R, `CPU R800 ROM`, `CPU R800 DRAM` o el Z80, según la CPU que mande. `SCREEN` actual y el vídeo en la HDMI (`V9968` o `V9990`); la comprobación de la tabla de ondas del MoonSound: `YRW801 OK`, `YRW801 no válida` o `comprobando`; y cómo sale el V9968 a pantalla completa: `16:9` o `4:3 Scale3x`, que cambia la tecla **V** |
+| Red | La IP del cable (J3), `WiFi` y la IP de la ESP32-S3, o `sin cable o sin IP` |
+| Pie | Los botones **U** (actualizar), **P** (perfiles) y **F12** (salir), y el aviso de que el MSX está en pausa |
 
 La temperatura es el dato que más se mira: el XC7Z020 ronda los **80 °C sin disipador** (su máximo comercial es 85 °C) y unos **55 °C con uno**. Si no lleva disipador, pónselo.
 
@@ -126,6 +126,10 @@ El VDP principal del MSXimus Z no es un V9958: es el **V9968** de Takayuki Hara 
 - **256 KB de VRAM**, comandos nuevos (LRMM rota y escala al copiar, LFMM, LFMC) y un modo rápido de comandos que multiplica la velocidad de los bloques.
 
 Todo eso está desactivado hasta que el software lo pide, así que el MSXimus Z es un MSX2+ normal para todo el catálogo. Para el software que sí lo pide, la referencia es la [demo DEVCON de HRA!](https://github.com/hra1129/V9968_Cartridge) y las demos de terceros escritas para él.
+
+![DEVCON, la demo del V9968 de HRA!: sprites de modo 3 sobre el fondo](../img/v9968_devcon_hdmi.png)
+
+![V9968 TECH DEMO, de renatus](../img/v9968_tech_demo.png)
 
 ### 5.1 La generación C y el desbloqueo
 

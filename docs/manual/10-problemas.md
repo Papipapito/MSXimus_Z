@@ -1,6 +1,6 @@
 # 10. Problemas frecuentes
 
-Por síntoma, qué mirar en el MSXimus Z (ZYNQ MINI, versión Z1.3.1). La causa probable va en primer lugar.
+Por síntoma, qué mirar en el MSXimus Z (ZYNQ MINI, versión Z1.4.9). La causa probable va en primer lugar.
 
 La placa tiene dos mundos y conviene saber en cuál está el problema: el **PS** (el ARM, que arranca desde la QSPI o desde la tarjeta de TF1 y hace de *companion*: tarjeta, USB, OSD, OLED, ajustes) y el **PL** (el MSX). Una regla rápida: si la OLED escribe y el panel de **F12** responde, el companion está vivo y el fallo está en el lado MSX; si ni la OLED ni F12 dan señales, el problema es de arranque del PS.
 
@@ -10,7 +10,7 @@ La placa tiene dos mundos y conviene saber en cuál está el problema: el **PS**
 |---|---|---|
 | No arranca nada: sin logo, la OLED apagada, los LEDs del PL sin vida | SW1 en un modo que no corresponde a lo que hay grabado. ON-ON = JTAG (se queda esperando al PC), ON-OFF = QSPI, OFF-OFF = tarjeta de TF1 | Poner SW1 donde toca y **quitar y dar la corriente**: el modo solo se lee al encender; el reset de la placa (PS_SRST) no lo relee |
 | Con SW1 en SD (OFF-OFF) no arranca | `BOOT.bin` no está en la raíz de la tarjeta de **TF1**, la tarjeta no es FAT32, o se ha metido en TF2, que es la del MSX | TF1 es la ranura del PS. El fichero se llama exactamente `BOOT.bin` y va en la raíz |
-| Con SW1 en QSPI (ON-OFF) no arranca, o arranca la demo de fábrica | La QSPI está vacía o **a medio grabar**: un borrado que se queda colgado (pasa si se intenta grabar con SW1 en SD) deja la QSPI inservible hasta regrabarla | Regrabar con `tools/qspi_program.tcl` **con SW1 en JTAG (ON-ON)**, y encender de nuevo con SW1 en QSPI ([capítulo 02](02-instalacion.md)) |
+| Con SW1 en QSPI (ON-OFF) no arranca, o arranca la demo de fábrica | La QSPI está vacía o **a medio grabar**: un borrado que se queda colgado (pasa si se intenta grabar con SW1 en SD) deja la QSPI inservible hasta regrabarla | Sin Vivado: arrancar de la microSD de instalación (SW1 en OFF-OFF) y volver a grabarla con **F12 → U**, **A**, **A, A**. O regrabar con `tools/qspi_program.tcl` **con SW1 en JTAG (ON-ON)**. Después, encender de nuevo con SW1 en QSPI ([capítulo 02](02-instalacion.md)) |
 | Pantalla negra, sin señal HDMI, pero la OLED sí escribe | El PL no se ha configurado: `BOOT.bin` mal montado (el bitstream tiene que ir justo detrás del FSBL) o el monitor no acepta la señal | Regenerar el `BOOT.bin` con `make_boot.sh`; probar otra entrada o cable |
 | Pantalla negra y la OLED también apagada | El PS no ha llegado al companion: el FSBL no encuentra sus particiones o no ha entrenado la DDR | La consola del FSBL sale por la UART1 del PS (P1, el puerto serie USB de la placa, 115200 baudios). Por JTAG, `tools/armlog.tcl` dirá "sin log del ARM" |
 | El HDMI se queda con el logo mientras el MSX ya está en el menú | Tras un apagón puede pasar: el puente de vídeo no refrescó | Pulsar cualquier tecla: se refresca. Si se repite, anotarlo |
@@ -185,7 +185,6 @@ Solo para quien compila o arranca desde el PC.
 - **`armlog.tcl` dice "sin log del ARM"**: el companion no está cargado (arranque por JTAG sin `BOOT_PROXY=1`, o el PS no llegó a él).
 - **El MSX se cuelga o teclea solo tras `key.tcl`**: los caracteres `\` y `|` ya se mapean; si una línea sale concatenada, revisar las comillas del `-type`.
 - **Temperatura**: el chip va a unos **80 °C sin disipador** y a unos 55 °C con él. Poner disipador. Se mira con `tools/temp.tcl`, en F12 o en la OLED (línea "die").
-- **El MCP de openMSX no sirve** con esta cadena de herramientas (issue nataliapc/mcp-openmsx#22): openMSX por línea de comandos, con `tools/openmsx_vdplog.tcl` para las trazas del VDP.
 
 ## Herramientas para diagnosticar
 
@@ -193,12 +192,12 @@ Desde el MSX, sin PC:
 
 - **Tecla T en el arranque o en el navegador**: el menú de pruebas. Dice la versión del core, el tipo de tarjeta, los bytes de configuración de los puertos 41h/42h/46h, y mide la velocidad de la tarjeta por sus cuatro rutas, el sonido del PSG y del OPLL, el Game Master 2 y el VDP.
 - **Tecla H**: la ayuda del navegador.
-- **Ajustes**: muestra la versión del core (Z1.3.1), la misma que la cabecera del panel F12.
-- **F12**: el panel del companion, sobre la imagen del MSX: versión, temperatura del chip y máxima, tensiones internas, tiempo encendida, tarjeta de TF2 (MB y errores), USB (dispositivos y tipos), velocidad del Z80, SCREEN actual, chip de vídeo en la HDMI, estado de la YRW801 y la IP del cable ([capítulo 09](09-video.md)). Congela el Z80 mientras está abierto, y con el HDMI en el V9990 no se ve (problema conocido). Con **U** pasa a la página de la actualización.
+- **Ajustes**: muestra la versión del sistema (Z1.4.9), la misma que la cabecera del panel F12.
+- **F12**: el panel del companion, sobre la imagen del MSX: versión, temperatura del chip y máxima, tensiones internas, tiempo encendida, tarjeta de TF2 (MB y errores), USB (dispositivos y tipos), velocidad del Z80, SCREEN actual, chip de vídeo en la HDMI, estado de la YRW801 y la IP del cable o de la WiFi ([capítulo 09](09-video.md)); en los perfiles Turbo R dice además qué CPU manda (R800 o Z80). Congela el Z80 mientras está abierto y se ve también con el V9990 en pantalla. Con **U** pasa a la página de la actualización y con **P** a la de perfiles.
 - **La OLED de la placa** (J4): lo esencial en ocho líneas, sin parar nada y también con el HDMI en el V9990: versión, temperatura, MB de la tarjeta, contadores USB (t/r/m), IP, chip de vídeo (o `YRW801 NO VALIDA`), tiempo encendido y CPU a 3,58 o 5,37 MHz.
 - **Los LEDs del PL**: el conectado a W13 parpadea lento a 3,58 MHz y rápido con el turbo (es el "estoy vivo" del core); el de V12 se enciende con la actividad de la tarjeta. Los otros dos siguen los disparos del mando 1.
 - **La LCD del ESP32**: red, tráfico, turbo, hora.
-- **Puertos desde BASIC**: `INP(&H2F)` da la versión del core (&HA3 = línea Zynq Z1.3; el nibble alto A significa línea Zynq) e `INP(&H29)` los arreglos (1 en la Z1.3.1); la versión completa la dice la cabecera del panel F12. El 2Dh describe el estado del USB del núcleo, que en la Zynq no se usa (el USB va por el companion): para el USB, F12 ([capítulo 02 de la referencia técnica](../tecnica/02-puertos-es.md)).
+- **Puertos desde BASIC**: `INP(&H2F)` da la versión del PL (&HA4 = línea Zynq Z1.4; el nibble alto A significa línea Zynq) e `INP(&H29)` su revisión (7 desde la Z1.4.7). Es la versión del bitstream, que solo cambia cuando cambia el PL; la del sistema la dicen Ajustes y la cabecera del panel F12. El 2Dh describe el estado del USB del núcleo, que en la Zynq no se usa (el USB va por el companion): para el USB, F12 ([capítulo 02 de la referencia técnica](../tecnica/02-puertos-es.md)).
 
 Desde el PC, por JTAG (`xsdb.bat tools/<script>.tcl`, con `hw_server` aparte):
 

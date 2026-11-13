@@ -9,8 +9,8 @@
 
 <p align="center">🇪🇸 <a href="README.es.md">Versión en castellano</a></p>
 
-<p align="center"><img src="docs/img/v9968_devcon.jpg" alt="The V9968 DEVCON demo running on the MSXimus" width="820"/></p>
-<p align="center"><i>HRA!'s official V9968 demo, running on the MSXimus.</i></p>
+<p align="center"><img src="docs/img/z_escritorio_ventana.png" alt="The MSX booting inside a window of the MSXimus Z desktop" width="820"/></p>
+<p align="center"><i>The MSX, booting inside a desktop window: clock, "Now playing" and the system card.</i></p>
 
 **No MSX needed: it is an MSX.** Plug in an HDMI screen and a USB keyboard, put your games on a microSD card, power it up.
 
@@ -21,13 +21,13 @@ MSXimus Z is the **Zynq line of the [MSXimus](https://github.com/Papipapito/MSXi
 
 The MSX's memory lives in the DDR3 too — the Z80's RAM, the VRAM, the 8 MB megaram, the BIOS pack and the OPL4 wavetable. There is room to spare.
 
-This repository holds the core (`fpga/`) and the companion (`fpga/zynq/arm/`) of the MSXimus Z. The boot menu and the BIOS packs carry copyrighted ROMs and are not published; neither is the ESP32 firmware, which lives in the single ESP repository, [`Papipapito/ESP32-for-FPGA`](https://github.com/Papipapito/ESP32-for-FPGA) (branch `c6`): see *Building it*.
+This repository holds the core (`fpga/`) and the companion (`fpga/zynq/arm/`) of the MSXimus Z. The boot menu and the BIOS packs carry copyrighted ROMs and are not published. The ESP32 firmware is not here either: it lives in the single ESP repository, [`Papipapito/ESP32-for-FPGA`](https://github.com/Papipapito/ESP32-for-FPGA) (`c6` branch). See *Building it*.
 
 ## What's inside
 
 | | |
 |---|---|
-| **CPU** | Z80 at 3.58 MHz with a real **5.37 MHz turbo** (F11). It does not identify as a turbo R and has no R800 |
+| **CPU** | Z80 at 3.58 MHz with a real **5.37 MHz turbo** (F11). The standard system does not identify as a turbo R and has no R800: that is what the **Turbo R** profile is for (*Profiles* row) |
 | **Video** | **[V9968](https://github.com/hra1129/V9968_Cartridge)** by HRA! (generation C): multicolor scalable sprites, 16 per line, 256 KB VRAM, fast commands. Plus a **V9990** (tiny9990 by [buppu3](https://github.com/buppu3)) at ports 60h-6Fh with its own picture: **Pause** switches the HDMI between the two. HDMI 720p, monitor-like borders, optional scanlines, and full screen at 16:9 or **4:3 with Scale3x** (F12 → V) |
 | **3D** | **[geo3d](https://github.com/alexmoncks/V9968_Cartridge)** by Alex Moncks: a 3D coprocessor at ports 9Dh/9Fh that transforms, clips, shades and draws the faces itself through the V9968's command engine — ~200 shaded frames per second |
 | **Audio** | Two PSGs, SCC and a second SCC in slot 1, OPLL (MSX-MUSIC, IKAOPLL), MSX-Audio Y8950 with ADPCM, and the **full MoonSound** (OPL4 FM + wavetable, YRW801 in DDR3). **WaveGame** music, a **per-source mixer** with a test tone, and true stereo channel by channel on every chip |
@@ -42,6 +42,19 @@ This repository holds the core (`fpga/`) and the companion (`fpga/zynq/arm/`) of
 | **Languages** | Menus, Settings and panel **in Spanish or in English**, with Nextor 2.1.4 or Nextor 3: four variants to choose from |
 
 The boot menu: RETURN launches, ESC boots MSX-DOS/Nextor, **S** Settings, **W** WiFi, **F** File-Hunter, **H** help. Holding **S** during the logo opens Settings even with the menu turned off.
+
+## In pictures
+
+Captures of the board's HDMI output, running Z1.4.9.
+
+| | |
+|:---:|:---:|
+| <img src="docs/img/z_perfil_dual.png" alt="Dual profile: a game in window A and BASIC in window B" width="400"/> | <img src="docs/img/z_perfiles.png" alt="The profiles page of the F12 panel" width="400"/> |
+| **Dual profile**: two MSX machines at once, each in its own window | **Profiles** (F12 → P): the board becomes another machine |
+| <img src="docs/manual/capturas/08-f12-video.png" alt="The F12 panel" width="400"/> | <img src="docs/img/z_turbo_r_r800.png" alt="The Turbo R profile measured with Z80 Frequency Benchmark" width="400"/> |
+| The **F12 panel**: temperature, card, USB, video and network | **Turbo R profile**: the R800 in DRAM mode, measured with NataliaPC's Z80 Frequency Benchmark |
+| <img src="docs/img/v9968_tech_demo.png" alt="V9968 TECH DEMO" width="400"/> | <img src="docs/img/v9968_devcon_hdmi.png" alt="The V9968 DEVCON demo" width="400"/> |
+| renatus's **V9968 TECH DEMO** | **DEVCON**, HRA!'s V9968 demo: mode 3 sprites over the background |
 
 ## What you need
 
@@ -173,7 +186,7 @@ The full story is in [`docs/manual/12-actualizar.md`](docs/manual/12-actualizar.
     OPL4 YRW801 OK
   Network
     192.168.2.105
-  [U] Update   [F12] Exit
+  [U] Update  [P] Profiles  [F12] Exit
   The MSX is paused.
 ```
 
@@ -183,7 +196,7 @@ The OLED on J4 shows the version, the IP, the active VDP and the turbo at all ti
 
 **Ethernet (J3).** The companion speaks [ducasp's ESP32 UNAPI protocol](https://github.com/ducasp/ESP32-UNAPI-Firmware) to the MSX, so the UNAPI driver in the BIOS pack, the **W** key, **File-Hunter**, hget and any UNAPI program work over the cable without changing anything on the MSX side. TLS included; DHCP from your router.
 
-**WiFi (CAM1).** A **Waveshare ESP32-S3-LCD-1.69** with the firmware from [`Papipapito/ESP32-for-FPGA`](https://github.com/Papipapito/ESP32-for-FPGA) (rama `c6`). It uses the board's 12-wire SH1.0 cable (pin 1 = the end away from the USB-C):
+**WiFi (CAM1).** A **Waveshare ESP32-S3-LCD-1.69** with the firmware from [`Papipapito/ESP32-for-FPGA`](https://github.com/Papipapito/ESP32-for-FPGA) (`c6` branch). It uses the board's 12-wire SH1.0 cable (pin 1 = the end away from the USB-C):
 
 | S3 cable | Signal | CAM1 |
 |---|---|---|
@@ -194,7 +207,7 @@ The OLED on J4 shows the version, the IP, the active VDP and the turbo at all ti
 
 Blue (3.3 V) and grey (5 V) stay unconnected: the S3 is powered by its own USB-C. The ground is mandatory. With both, **the cable wins** while it has a link.
 
-Building and flashing the S3: the firmware is not published precompiled. Build it from the ESP repository [`Papipapito/ESP32-for-FPGA`](https://github.com/Papipapito/ESP32-for-FPGA) (rama `c6`) with `arduino-cli` (`-DESP32_S3_LCD169`), as its [README](https://github.com/Papipapito/ESP32-for-FPGA/blob/c6/README.md) describes, and upload **only the app, at `0x10000`** (never the merged image at `0x0`), over the S3's own USB-C to the PC. It carries 16 certificate authorities from Mozilla, so the S3 validates the update server's certificate. The WiFi network is configured from the MSX with the **W** key.
+Building and flashing the S3: the firmware is not published precompiled. Build it from the ESP repository [`Papipapito/ESP32-for-FPGA`](https://github.com/Papipapito/ESP32-for-FPGA) (`c6` branch) with `arduino-cli` (`-DESP32_S3_LCD169`), as its [README](https://github.com/Papipapito/ESP32-for-FPGA/blob/c6/README.md) describes, and upload **only the app, at `0x10000`** (never the merged image at `0x0`), over the S3's own USB-C to the PC. It carries 16 certificate authorities from Mozilla, so the S3 validates the update server's certificate. The WiFi network is configured from the MSX with the **W** key.
 
 ## geo3d demos
 
@@ -204,9 +217,9 @@ More geo3d and V9968 demos: [kanon-ai/V9968_Geo3D_SampleDemo](https://github.com
 
 ## Building it
 
-**What can be built from this repository:** the **bitstream** (Vivado 2019.2) and the **companion and the FSBL** (ARM GNU toolchain 14.2, `arm-none-eabi`; no SDK or Vitis, xsdb is enough). The benches run on WSL (Ubuntu-24.04).
+**What can be built from this repository:** the **bitstream** (Vivado 2019.2) and the **companion and the FSBL** (ARM GNU toolchain 14.2, `arm-none-eabi`; no SDK or Vitis, xsdb is enough). The test benches belong to the development repository and are not part of this copy.
 
-**What cannot:** the **boot menu and the BIOS packs**. The source of the menu is here (`bios/`), but assembling it and mounting a pack needs the MSX system ROMs, which carry copyright and live in a private repository, so those two steps are not reproducible from here. Whoever wants a `BOOT.bin` of their own takes the BIOS pack out of a published one (it is a partition of the file) and builds the rest.
+**What cannot:** the **boot menu and the BIOS packs**. The source of the menu (`bios/`) is not published: assembling it and mounting a pack needs the MSX system ROMs, which carry copyright and live in a private repository, so those two steps are not reproducible from here. Whoever wants a `BOOT.bin` of their own takes the BIOS pack out of a published one (it is a partition of the file) and builds the rest.
 
 ```bash
 # 1. Bitstream (~15 min)            -> fpga/zynq/msximus_zynq.bit
@@ -234,7 +247,7 @@ The YRW801 (the OPL4 wavetable, 2 MB) can be replaced by a file of 2 MB of zeros
 [`docs/INDICE.md`](docs/INDICE.md) holds two documents, in Spanish:
 
 - A **[quick start guide (Spanish)](docs/manual/00-guia-rapida.md)** and a **user manual** in twelve chapters: what it is, installation, SD cards, menu, ROMs and mappers, MSX-DOS and Nextor, network, audio, video, troubleshooting, tape and updating.
-- A **technical reference** in thirteen: architecture, I/O ports, memory maps, BIOS pack, V9968, SD and DMA, building, verification, changelog, tape, network update, companion, and V9990 with geo3d.
+- A **technical reference** in fifteen: architecture, I/O ports, memory maps, BIOS pack, V9968, SD and DMA, building, verification, changelog, tape, network update, companion, V9990 with geo3d, and the Dual and Turbo R profiles.
 
 ## Repository layout
 

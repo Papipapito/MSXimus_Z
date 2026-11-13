@@ -4,7 +4,7 @@ El MSXimus Z lleva un menú dentro de la BIOS. No es un programa que se cargue d
 
 El código del menú (`bios/src/`) no se publica. Por debajo, el pack de BIOS vive en la DDR3 del procesador, la tarjeta la sirve el *companion* (el programa que corre en el ARM), los ajustes se guardan en la QSPI de la placa y el teclado, el mando y el ratón llegan por el USB host.
 
-**Idioma.** El menú, Ajustes y todos los mensajes salen en castellano o en inglés según el pack de BIOS: las cuatro variantes de la Z1.3.0 son Nextor 2.1.4 y Nextor 3.0 beta 2, cada una en castellano y en inglés. No hay una opción de idioma en Ajustes; para cambiarlo se pone el pack de la otra variante. En este capítulo se citan los textos en castellano; los de la variante inglesa son su traducción (*Settings*, *Menu at boot*, *Audio mixer*, *Launch ROM*, etc.). El panel F12 (apartado 10) habla el idioma del menú de la imagen que está en marcha.
+**Idioma.** El menú, Ajustes y todos los mensajes salen en castellano o en inglés según el pack de BIOS: las cuatro variantes son Nextor 2.1.4 y Nextor 3.0, cada una en castellano y en inglés. No hay una opción de idioma en Ajustes; para cambiarlo se pone el pack de la otra variante. En este capítulo se citan los textos en castellano; los de la variante inglesa son su traducción (*Settings*, *Menu at boot*, *Audio mixer*, *Launch ROM*, etc.). El panel F12 (apartado 10) habla el idioma del menú de la imagen que está en marcha.
 
 Todo lo que hay en este capítulo está sacado del código del menú, que no se publica (`bios/src/menu_main.asm`, `gm2.asm`, `srm_saves.asm`, `sort_list.asm`, `test_menu.asm` y `e7_rutinas.asm`) y del *companion* (`fpga/zynq/arm/companion/`).
 
@@ -76,7 +76,7 @@ Al pulsar RETURN sobre una `[ROM]` se abre la pantalla **Lanzar ROM**. Tiene un 
 - **Tamaño**: en KB.
 - **Mapper**: el tipo de cartucho con el que se va a emular.
 - **SRAM: On/Off**: solo aparece con mappers ASCII8 y ASCII16, que son los que llevan SRAM de cartucho.
-- **GM2: On/Off**: solo aparece con mappers Konami y Konami-SCC, que son los que usan el Game Master 2.
+- **GM2: On/Off**: solo aparece si Ajustes tiene *Slot 1 = Game Master 2* y el mapper es Konami o Konami-SCC, que son los que usan el Game Master 2 (desde la Z1.4.9; antes bastaba el mapper).
 - Una **barra de progreso** de 64 celdas para la carga.
 - Una **línea de estado** con lo que está pasando.
 - El **pie** con las teclas disponibles.
@@ -102,8 +102,8 @@ Los mappers disponibles son: Plain, Konami, Konami-SCC, ASCII8, ASCII16, NEO-8, 
 | **RETURN** | Cargar la ROM en la megaram y lanzarla. La barra avanza durante la carga, el estado dice *"Cargando ROM en megaram..."* y luego *"ROM cargada."*; después el menú arranca la ROM directamente, como si fuera un cartucho |
 | **M** | Cambiar el mapper. Cicla Plain, Konami, Konami-SCC, ASCII8, ASCII16, NEO-8, NEO-16, Plain 0000h, ASCII16-X y vuelta a Plain. Al cambiar, la SRAM y el GM2 vuelven a su valor por defecto |
 | **S** | Conmutar la SRAM de cartucho para este lanzamiento. Solo actúa en ASCII8 y ASCII16. Por defecto está Off, salvo que el nombre lleve `KOEI` o `SRAM`, en cuyo caso arranca On |
-| **G** | Conmutar el Game Master 2 para este lanzamiento. Solo actúa en Konami y Konami-SCC. Por defecto toma el valor del ajuste **Slot 1** |
-| **V** | Lanzar la ROM **dentro de una ventana del V9990** (solo Zynq): antes de arrancarla pinta el escritorio en el V9990 y programa la ventana del V9968. Como lanzar no reinicia la máquina, el escritorio se queda y el juego corre dentro del marco, con su nombre en la barra de título. Se ve entero, con el escritorio en B5 (640 × 400) y el juego a escala ×0,75 (912 × 477 px de la HDMI con los 8 puntos de margen a cada lado), pegado a la derecha. La ventana se puede arrastrar con el ratón. **Pausa** vuelve al V9968 entero; el reset del MSX borra el escritorio |
+| **G** | Conmutar el Game Master 2 para este lanzamiento. Solo existe con *Slot 1 = Game Master 2* en Ajustes y un mapper Konami o Konami-SCC: arranca en On y G lo quita para esa vez. Sin ese ajuste, el pie no la anuncia y la tecla no hace nada |
+| **V** | Lanzar la ROM **dentro de una ventana del V9990** (solo Zynq, y solo si el sistema cargado tiene V9990: en el perfil Turbo R sin V9990 el pie no anuncia V ni B y no hacen nada): antes de arrancarla pinta el escritorio en el V9990 y programa la ventana del V9968. Como lanzar no reinicia la máquina, el escritorio se queda y el juego corre dentro del marco, con su nombre en la barra de título. Se ve entero, con el escritorio en B5 (640 × 400) y el juego a escala ×0,75 (912 × 477 px de la HDMI con los 8 puntos de margen a cada lado), pegado a la derecha. La ventana se puede arrastrar con el ratón. **Pausa** vuelve al V9968 entero; el reset del MSX borra el escritorio |
 | **B** | Como **V**, pero con el escritorio del V9990 en **B7** (1024 × 212, un punto por píxel de la HDMI) y el juego **entero** a escala ×0,5 en una ventana de 512 × 318 px. **Pausa** pasa al V9968 a pantalla completa y otra vez Pausa vuelve a la ventana |
 | **D** | Lanzar la ROM en **A** con el **escritorio de dos columnas** del perfil Dual, y arrancar en **B** **MSX-DOS** (Nextor 2.1.4) como segunda máquina, con la **SD en B**: B escribe en la tarjeta y A solo lee, salvo los ficheros `.SRM` de la partida de la ROM que se lanza, que A sigue guardando (si la ROM lleva SRAM, el menú la crea o la carga antes de pintar el escritorio). B se reinicia al ganar la SD, salvo que ya corriera MSX-DOS y ya fuera la dueña. **Solo existe con el perfil `DUAL` cargado**: con cualquier otro (estándar, Música) el pie no la anuncia y la tecla no hace nada. La ROM se lanza como con RETURN (mismo mapper, SRAM y Game Master 2), con el escritorio del apartado siguiente: A (el juego) a la izquierda, B a la derecha |
 | **Shift + D** | Lo que hacía la D hasta la Z1.3.2b7: mandar la ROM a la **máquina B** en vez de lanzarla en A. Carga la ROM igual que RETURN, pero la copia al cartucho de B, que la arranca, y vuelve al navegador: **A no se reinicia**. La SD vuelve a **A** (el MSX-DOS de B, si lo había, muere con el cartucho nuevo; A está en el menú, sin DOS que reiniciar). El pie no lo anuncia (no cabe en la fila); también se puede cargar un juego en B con el panel F12 → B (tecla **C** para quitarlo) o con `tools/dual_rom.tcl` |
@@ -208,7 +208,7 @@ La pantalla **MSXimus - Ajustes** tiene estas opciones, en este orden:
 
 | Opción | Valores | Qué es |
 |---|---|---|
-| **Slot 1** | Nada / 2o SCC / Game Master 2 | Qué hay en el slot 1 del MSX. *2o SCC* pone un segundo chip SCC para los juegos que lo buscan como cartucho aparte. *Game Master 2* deja el GM2 activado por defecto para los juegos Konami |
+| **Slot 1** | Nada / 2o SCC / Game Master 2 | Qué hay en el slot 1 del MSX. *2o SCC* pone un segundo chip SCC para los juegos que lo buscan como cartucho aparte. *Game Master 2* pone el GM2 para los juegos Konami: solo con él sale la fila «GM2» en *Lanzar ROM* (apartado 3) |
 | **Enable Scanlines** | On / Off | Líneas de barrido en la salida HDMI |
 | **Stereo Sound** | On / Off | Sonido en estéreo |
 | **Boot Turbo** | On / Off | Arrancar siempre con la CPU a 5,37 MHz. En la misma fila hay una nota, *"(reiniciar fisicamente)"*: ver más abajo |
@@ -216,7 +216,7 @@ La pantalla **MSXimus - Ajustes** tiene estas opciones, en este orden:
 | **Mezclador de audio** | | Abre la página del mezclador (sección 5.1) |
 | **Save & Restart** | | Guardar los ajustes en la QSPI y reiniciar el MSX |
 
-Debajo se muestra *"Version FPGA (.fs):"* con la versión del core que hay cargado (el «.fs» de la etiqueta no significa nada en la Zynq). Un core sin versión diría *"desconocida"*. La versión sale del puerto 2Fh (versión: `Z1.3` es A3h) y del 29h (revisión de arreglos, que se añade detrás en decimal si no es 0): con la Z1.3.1 la pantalla enseña «Z1.3.1». La cabecera del panel F12 (apartado 10) enseña la misma versión.
+Debajo se muestra *"Version FPGA (.fs):"* con la **versión del sistema** instalado (el «.fs» de la etiqueta no significa nada en la Zynq): con la Z1.4.9 la pantalla enseña «Z1.4.9», lo mismo que la cabecera del panel F12 (apartado 10) y la OLED. Hasta la Z1.4.8 enseñaba la versión del PL, la de los puertos 2Fh y 29h, que solo cambia cuando cambia el bitstream: por eso una Z1.4.4 decía «Z1.4.1». Desde la Z1.4.9 el *companion* pone ahí la versión del sistema antes de soltar el MSX.
 
 En la última fila de la pantalla hay una leyenda con las teclas de Ajustes.
 
@@ -250,7 +250,7 @@ La pantalla **MSXimus - Mezclador de audio** lista ocho filas, una por canal:
 | **PSG** | El PSG (los dos, en estéreo) | 0/8 a 8/8 |
 | **SCC** | El SCC de la megaram y el 2o SCC del slot 1 | 0/8 a 8/8 |
 | **OPLL (FM-PAC)** | MSX-MUSIC | 0/8 a 8/8 |
-| **MSX-AUDIO** | El Y8950, con su ADPCM | 0/8 a 8/8 |
+| **AUDIO/PCM** | El Y8950 (MSX-AUDIO), con su ADPCM; en los perfiles Turbo R, también el PCM | 0/8 a 8/8 |
 | **OPL4 FM (OPL3)** | La parte FM del MoonSound | 0/8 a 8/8 |
 | **OPL4 wave** | La tabla de ondas del MoonSound | 0/8 a 8/8 |
 | **WaveGame** | La música WAV de los juegos WaveGame | 0/8 a 8/8 |
@@ -324,12 +324,16 @@ No es parte del menú de la BIOS, pero se usa con el mismo teclado y conviene sa
 - **Sistema**: temperatura del chip (con su máximo) y tensiones internas, y el tiempo encendido.
 - **Tarjeta SD**: si hay tarjeta en TF2 y de cuántos MB, y los errores.
 - **USB**: cuántos dispositivos hay y de qué tipo (teclados, ratones, mandos, discos, hubs).
-- **MSX**: la velocidad del Z80 (3,58 o 5,37 MHz; se conmuta con F11), el SCREEN actual, qué vídeo está en pantalla (V9968 o V9990) y si la ROM de ondas del OPL4 (YRW801) es válida.
-- **Red**: la dirección IP de la Ethernet de la placa, o *sin cable o sin IP*.
+- **MSX**: la velocidad del Z80 (3,58 o 5,37 MHz; se conmuta con F11) o, en los perfiles Turbo R, qué CPU manda (*CPU R800 ROM*, *CPU R800 DRAM* o el Z80); el SCREEN actual, qué vídeo está en pantalla (V9968 o V9990), si la ROM de ondas del OPL4 (YRW801) es válida y cómo sale el V9968 a pantalla completa (16:9 o 4:3 Scale3x; la tecla **V** lo cambia).
+- **Red**: la dirección IP de la Ethernet de la placa, la de la WiFi, o *sin cable o sin IP*.
+
+![La página de información del panel F12](capturas/06-f12-info.png)
 
 Al pie hay tres botones: **U** abre la página de **actualización por red** (ESC vuelve a la de información), **P** abre la de **perfiles** y **F12** cierra el panel. Cómo se actualiza la máquina está en el [capítulo 12](12-actualizar.md); el panel F12 completo, con sus datos y su relación con el puente de vídeo, está en el [capítulo 09](09-video.md).
 
-La página de **perfiles** (P) es para los perfiles del PL guardados en la microSD de TF1: enseña el estado de la tarjeta, el perfil que corre, el que se carga al encender (con una estrella) y la lista, cuya primera fila es siempre el perfil 1 (el del `BOOT.bin`). Cada perfil sale con su **nombre**: *Música* (*Music* en inglés) y *Dual*; el identificador interno no cambia (los perfiles ya instalados, la actualización por red y las etiquetas `[P:ID]` de las ROM siguen igual: `[P:MUSICA]`, y también vale `[P:MUSIC]`). Las flechas eligen, **Intro** carga el elegido (el MSX se reinicia y la imagen tarda unos segundos en volver; sobre el perfil 1 reinicia la placa) y **D** lo borra. **A** marca el elegido como el perfil **al encender**: la placa lo carga antes de arrancar el MSX (medio segundo más); sobre el perfil 1 lo quita. Si ese perfil falta o es de otra versión del sistema, arranca el 1. Volver al perfil 1 con Intro (dos veces) reinicia la placa y arranca el 1 esa vez, aunque haya perfil al encender. Si un perfil deja la placa sin imagen, se quita la microSD de TF1 y se enciende: arranca el 1. **S** abre la vista del servidor ([capítulo 12](12-actualizar.md), apartado 9). Si la tarjeta de TF1 es nueva, la página lo dice y la prepara ella ([capítulo 03](03-tarjeta-sd.md), sección 2): **T** e Intro si está vacía, a medias o con los directorios rotos (no borra nada); **B** («Borrar y preparar» / «Convertir») si tiene otros datos o es de las betas: la primera pulsación avisa de que se borra la tarjeta **entera** (con *datos de MSX-DOS* si tiene una FAT16), Intro lo hace y cualquier otra tecla o 10 s sin tocar cancelan. Con la placa arrancada desde SD no se puede (*«Pon SW1 en QSPI para prepararla»*). Hace falta una tarjeta de 1 GB o más. Nextor no ve esa tarjeta.
+La página de **perfiles** (P) es para los perfiles del PL guardados en la microSD de TF1: enseña el estado de la tarjeta, el perfil que corre, el que se carga al encender (con una estrella) y la lista, cuya primera fila es siempre el perfil 1, el del `BOOT.bin`, que se llama *Normal* (*Standard* en inglés). Cada perfil sale con su **nombre**: *Normal*, *Música* (*Music* en inglés), *Dual*, *Turbo R* y *TR V9990*; el identificador interno no cambia (los perfiles ya instalados, la actualización por red y las etiquetas `[P:ID]` de las ROM siguen igual: `[P:MUSICA]`, y también vale `[P:MUSIC]`). Las flechas eligen, **Intro** carga el elegido (el MSX se reinicia y la imagen tarda unos segundos en volver; sobre el perfil 1 reinicia la placa) y **D** lo borra. **A** marca el elegido como el perfil **al encender**: la placa lo carga antes de arrancar el MSX (medio segundo más); sobre el perfil 1 lo quita. Si ese perfil falta o es de otra versión del sistema, arranca el 1. Volver al perfil 1 con Intro (dos veces) reinicia la placa y arranca el 1 esa vez, aunque haya perfil al encender. Si un perfil deja la placa sin imagen, se quita la microSD de TF1 y se enciende: arranca el 1. **S** abre la vista del servidor ([capítulo 12](12-actualizar.md), apartado 9). Si la tarjeta de TF1 es nueva, la página lo dice y la prepara ella ([capítulo 03](03-tarjeta-sd.md), sección 2): **T** e Intro si está vacía, a medias o con los directorios rotos (no borra nada); **B** («Borrar y preparar» / «Convertir») si tiene otros datos o es de las betas: la primera pulsación avisa de que se borra la tarjeta **entera** (con *datos de MSX-DOS* si tiene una FAT16), Intro lo hace y cualquier otra tecla o 10 s sin tocar cancelan. Con la placa arrancada desde SD no se puede (*«Pon SW1 en QSPI para prepararla»*). Hace falta una tarjeta de 1 GB o más. Nextor no ve esa tarjeta.
+
+![La página de perfiles, con el Turbo R en marcha](../img/z_perfiles.png)
 
 **Instalar un perfil desde un fichero.** Copia el `.mxp` a la tarjeta de TF2, elígelo en el navegador (sale con el tipo `MXP`) y pulsa RETURN: el panel F12 se abre solo y dice *«ID» instalado desde la TF2* o por qué no (sin tarjeta o sin partición de perfiles, perfil dañado, tarjeta llena). Se cierra con ESC o F12; después, Intro sobre ese perfil lo carga.
 
@@ -345,8 +349,8 @@ La misma información resumida sale por la pequeña OLED de la placa (conector J
 | Sin tarjeta | RETURN, ESC, S, W, T |
 | Navegador | cursores, RETURN, BACKSPACE, /, TAB, R, D, A, S, W, T, F, U, P, N, H, ESC, mando USB (direcciones, A, B) |
 | Búsqueda por nombre | texto, RETURN, BACKSPACE, ESC |
-| Lanzar ROM | RETURN, M, S, G, V, B, ESC |
-| Lanzar disco | RETURN, V, B, ESC |
+| Lanzar ROM | RETURN, M, S, G (con Slot 1 = Game Master 2), V y B (con V9990), D (perfil Dual), ESC |
+| Lanzar disco | RETURN, V y B (con V9990), ESC |
 | Ajustes | Arriba, Abajo, ESPACIO, ESC (salir sin guardar) |
 | Mezclador de audio | Arriba, Abajo, Izquierda, Derecha, ESPACIO, ESC |
 | File-Hunter | texto, RETURN, BACKSPACE, F, ESC |

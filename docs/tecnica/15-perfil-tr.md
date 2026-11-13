@@ -1,6 +1,8 @@
 # 15. El perfil TR (Turbo R): la base limpia (fase 1) y el R800 con la BIOS del turbo R (fase 2)
 
-*(El perfil Turbo R se publica desde la Z1.4.0; este capítulo es el diario técnico de su desarrollo. Los apartados 1 a 9 son la **fase 1**; la **fase 2** (R800, S1990 completo, mapa de slots del FS-A1ST y la BIOS del usuario) empieza en el apartado 10.)*
+*(Los perfiles **Turbo R** y **Turbo R V9990** se publican desde la Z1.4.0 y la Z1.4.1 y se bajan desde la placa: F12 → P → S. El capítulo conserva el orden en que se hicieron: los apartados 1 a 9 son la **fase 1**, la base sin R800; la **fase 2** (R800, S1990 completo, mapa de slots del FS-A1ST y la BIOS del turbo R) empieza en el apartado 10. Las carpetas `files/tr_fase…` y `bios/` que cita son del repositorio de desarrollo y no están en esta copia.)*
+
+![El perfil Turbo R medido con Z80 Frequency Benchmark: R800 en modo DRAM, 19,77 MHz](../img/z_turbo_r_r800.png)
 
 El perfil **TR** (`build.tcl … bit tr`, capítulo [07](07-construccion.md)) es la **base** sobre la que se montará un MSX turbo R de verdad (R800, S1990 completo, PCM, la BIOS de turbo R que aporte el usuario). La **fase 1** es solo la base: **arranca exactamente como el MSX2+ del estándar** (mismo pack de BIOS, mismo menú, SD, teclado y ratón USB, audio PSG/SCC/OPLL, V9968 por HDMI, F12 y companion) pero **sin** cuatro bloques grandes que el turbo R no lleva: geo3d, el V9990, el OPL4 y el Y8950. **Todavía no hay R800**: la CPU sigue siendo el Z80 (`G80a`) a 3,58 o 5,37 MHz.
 
@@ -595,7 +597,7 @@ Es el mecanismo del propio tR (la BIOS lo arranca como a cualquier cartucho, en 
 
 ### 21.4 Implementación y prueba en placa (04/11/2026, `files/tr_fase6a/`)
 
-**Dos desviaciones del plan.** (1) La fuente del menú de la Zynq es **`bios/src` de este repositorio**, no el `src/` del repo privado (`6cf55a7`, línea Tang: sin V9991, disquetera ni música; 1.183 líneas de diferencia, y el pack de la Zynq lleva lo de aquí). En el repo privado solo van los packs, rama `perfil-tr`. (2) `MENU_SLOT` se fija leyendo `#45` **con el dispositivo `48h` seleccionado** (sin él, el puerto no es el del core y el estándar podía leer un bit 6 falso).
+**Dos desviaciones del plan.** (1) La fuente del menú de la Zynq es **`bios/src` del repositorio de desarrollo** (no se publica), no el `src/` del repo privado (`6cf55a7`, línea Tang: sin V9991, disquetera ni música; 1.183 líneas de diferencia, y el pack de la Zynq lleva lo de aquí). En el repo privado solo van los packs, rama `perfil-tr`. (2) `MENU_SLOT` se fija leyendo `#45` **con el dispositivo `48h` seleccionado** (sin él, el puerto no es el del core y el estándar podía leer un bit 6 falso).
 
 **Cambios:** `tr_rommap.v` (0-1 = menú: páginas 1 y 2 = DDR 0x76C000 y 0x770000); `menu_main.asm`, `e7_rutinas.asm`, `test_menu.asm` (`MENU_SLOT` #E892, `R800_REQ` #E893, `menu_p2`; etiqueta `[R800`; CHGCPU(1) en `boot_stub`). `tr_rommap` lee **00h en 4018h-401Fh del 0-1**, para que quien busque la firma `APRLOPLL` encuentre el MSX-MUSIC del 0-2 y no la ventana del menú, que la lleva. *Precaución, no arreglo*: el commit 504e73b la da como causa de un cuelgue y **no lo era**.
 

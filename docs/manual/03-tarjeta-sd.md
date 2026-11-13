@@ -23,7 +23,7 @@ Hay dos formas de arrancar la placa y el bootloader solo usa TF1 en una:
 Dos cosas que conviene tener claras:
 
 1. **SW1 se lee solo al quitar y dar la corriente.** El reset de la placa (PS_SRST) no lo relee: si se cambia el interruptor hay que apagar y encender.
-2. Hay un `BOOT.bin` por cada combinación de Nextor (2 o 3) e idioma (castellano o inglés): los cuatro `BOOT_Z1.3.0_*.bin` están en la release de GitHub. También se construye desde el repositorio con `fpga/zynq/arm/boot/make_boot.sh`. El [capítulo 02](02-instalacion.md) explica cómo.
+2. Hay un `BOOT.bin` por cada combinación de Nextor (2 o 3) e idioma (castellano o inglés): los cuatro `BOOT_<versión>_*.bin` están en la release de GitHub. También se construye desde el repositorio con `fpga/zynq/arm/boot/make_boot.sh`. El [capítulo 02](02-instalacion.md) explica cómo.
 
 ### Preparar la tarjeta de TF1 (perfiles)
 
@@ -73,7 +73,7 @@ La tarjeta tiene que llevar **tabla de particiones** (MBR): el menú enumera las
 | Guardar la SRAM de cartucho y el Game Master 2 | sí | no |
 | Nextor desde MSX-DOS | sí | no: Nextor no monta FAT32 (ni la 2.1.4 ni la 3.0) |
 
-La forma recomendada de dejarla lista es **[MSX SD Maker](https://github.com/Papipapito/SD_Maker) 1.4** (repositorio Papipapito/SD_Maker), un programa para Windows, con sus instrucciones en su repositorio, que trae el contenido de la tarjeta (sección 5) y la prepara: parte la tarjeta en particiones FAT16 de 2 o 4 GB como lo hace el FDISK de Nextor (o en una sola FAT32), copia Nextor o MSX-DOS, SofaRun, Multi Mente y el resto de programas, y escribe el `AUTOEXEC.BAT`. Hay que elegir en él el mismo Nextor que lleva la máquina. Sin él: una tarjeta de 2 GB o menos se formatea en FAT16 desde cualquier sistema, y con tarjetas mayores hay que crear una partición de hasta 2 GB en FAT16 con una herramienta de particiones o con `CALL FDISK` desde el propio MSX. El menú admite **varias particiones** y la tecla **TAB** cambia de una a otra, así que una tarjeta grande puede llevar una FAT16 para el menú y otras para MSX-DOS. El `AUTOEXEC.BAT` del contenido base (sección 5) cuenta con eso: monta la partición 2 como `C:` y la 3 como `D:`.
+La forma recomendada de dejarla lista es **[MSX SD Maker](https://github.com/Papipapito/SD_Maker)** (repositorio Papipapito/SD_Maker), un programa para Windows y macOS, con sus instrucciones en su repositorio, que trae el contenido de la tarjeta (sección 5) y la prepara: parte la tarjeta en particiones FAT16 de 2 o 4 GB como lo hace el FDISK de Nextor (o en una sola FAT32), copia Nextor o MSX-DOS, SofaRun, Multi Mente y el resto de programas, y escribe el `AUTOEXEC.BAT`. Hay que elegir en él el mismo Nextor que lleva la máquina. Sin él: una tarjeta de 2 GB o menos se formatea en FAT16 desde cualquier sistema, y con tarjetas mayores hay que crear una partición de hasta 2 GB en FAT16 con una herramienta de particiones o con `CALL FDISK` desde el propio MSX. El menú admite **varias particiones** y la tecla **TAB** cambia de una a otra, así que una tarjeta grande puede llevar una FAT16 para el menú y otras para MSX-DOS. El `AUTOEXEC.BAT` del contenido base (sección 5) cuenta con eso: monta la partición 2 como `C:` y la 3 como `D:`.
 
 Nombres largos: el navegador los **muestra**, pero todo lo que el menú **escribe** va en formato 8.3. Un fichero que crea el menú, como una descarga o un guardado, se verá con nombre corto en el PC.
 
@@ -93,10 +93,10 @@ sd/
 │   ├── FHUNT/               VACÍA a propósito: descargas y guardados del menú
 │   └── TMP/                 VACÍA a propósito: temporales de DOS
 ├── nextor-2.1.4/            NEXTOR.SYS, COMMAND2.COM, MSXDOS2.SYS y sus herramientas
-└── nextor-3.0.0-beta2/      NEXTOR.SYS, COMMAND3.COM y las herramientas de Nextor 3
+└── nextor-3.0.0/      NEXTOR.SYS, COMMAND3.COM y las herramientas de Nextor 3
 ```
 
-Las herramientas de `nextor-2.1.4/` y las de `nextor-3.0.0-beta2/` no se mezclan en la misma tarjeta: son versiones distintas de los mismos programas (`MAPDRV`, `DEVINFO`, `CHKDSK`...) emparejadas con su kernel. **Cambiar de Nextor (otro `BOOT.bin`) pide también el `NEXTOR.SYS` de ese Nextor en la tarjeta**: con el de la otra versión el MSX no llega a DOS. El [capítulo 06](06-msxdos-nextor.md) entra en Nextor.
+Las herramientas de `nextor-2.1.4/` y las de `nextor-3.0.0/` no se mezclan en la misma tarjeta: son versiones distintas de los mismos programas (`MAPDRV`, `DEVINFO`, `CHKDSK`...) emparejadas con su kernel. **Cambiar de Nextor (otro `BOOT.bin`) pide también el `NEXTOR.SYS` de ese Nextor en la tarjeta**: con el de la otra versión el MSX no llega a DOS. El [capítulo 06](06-msxdos-nextor.md) entra en Nextor.
 
 Si `FHUNT` o `TMP` se pierden al copiar (los sistemas de control de versiones no guardan carpetas vacías), se crean a mano. **El menú no crea carpetas.** Sin `FHUNT` no hay descargas ni guardados, y el menú lo dice en la fila de estado (*"GM2: sin FHUNT (MKDIR en DOS)"*, *"SRAM: sin FHUNT, no se guarda"*).
 
@@ -197,7 +197,7 @@ Los ficheros de texto del MSX, como `AUTOEXEC.BAT`, llevan fin de línea CR+LF y
 **TF2**, la del MSX:
 
 1. Formatear en FAT16 (con MBR). Si la tarjeta es grande, una partición FAT16 de hasta 2 GB y el resto para DOS.
-2. Copiar a la raíz (o dejar que lo haga MSX SD Maker) el contenido de `base/` y el de la carpeta de Nextor que lleve el pack de la placa (`nextor-2.1.4/` o `nextor-3.0.0-beta2/`), incluidos `NEXTOR.SYS`, `COMMAND2.COM` o `COMMAND3.COM` y `AUTOEXEC.BAT`.
+2. Copiar a la raíz (o dejar que lo haga MSX SD Maker) el contenido de `base/` y el de la carpeta de Nextor que lleve el pack de la placa (`nextor-2.1.4/` o `nextor-3.0.0/`), incluidos `NEXTOR.SYS`, `COMMAND2.COM` o `COMMAND3.COM` y `AUTOEXEC.BAT`.
 3. Comprobar que existen `FHUNT` y `TMP` en la raíz, en mayúsculas. Si no, `MKDIR FHUNT` desde MSX-DOS o crearlas desde el PC.
 4. Copiar `GM2.ROM` dentro de `FHUNT` si se van a usar los guardados del Game Master 2.
 5. Copiar las ROMs y los discos en las carpetas que se quiera; los juegos WaveGame, con su carpeta entera.

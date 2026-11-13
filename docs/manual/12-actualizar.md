@@ -16,7 +16,7 @@ Si hay cable con enlace, se usa el cable. Si no, la S3. Sin ninguno de los dos, 
 
 ## 2. La página de actualización
 
-**F12** abre el panel de estado ([capítulo 04, §10](04-menu.md)) y el MSX queda congelado detrás. En su pie hay dos botones, **U** *Actualizar* y **F12** *Salir*. **U** abre la página **Actualizar por red** (*Network update*, en el idioma del menú de la imagen instalada); **ESC** vuelve al panel y **F12** lo cierra.
+**F12** abre el panel de estado ([capítulo 04, §10](04-menu.md)) y el MSX queda congelado detrás. En su pie hay tres botones: **U** *Actualizar*, **P** *Perfiles* y **F12** *Salir*. **U** abre la página **Actualizar por red** (*Network update*, en el idioma del menú de la imagen instalada); **ESC** vuelve al panel y **F12** lo cierra.
 
 > Hasta la Z1.2.13 el panel F12 no se veía con el HDMI en el V9990 (Pausa vuelve al V9968); desde la Z1.3 sale en todos los modos ([capítulo 09](09-video.md)).
 
@@ -58,7 +58,7 @@ La descarga no se fía del canal: el manifiesto de la versión va firmado y la i
 
 - **msx.barcelona**, por TLS. Es el servidor de las versiones. Con la S3, el certificado se valida contra las 16 autoridades que lleva su firmware.
 - **Antes**, la placa pregunta por UDP (difusión al puerto 9474 de la red local) si hay un **servidor de desarrollo** en algún PC (`fpga/zynq/ota/ota_servidor.py`); si alguien contesta, la actualización sale de ahí y el servidor lo dice en el marco con `(PC)`. Si nadie contesta, msx.barcelona. Para un uso normal no hace falta saberlo.
-- **GitHub lleva las versiones grandes** (con los `BOOT_*.bin` y el bitstream) y **los arreglos salen solo por la red**. Se instala la versión grande de GitHub (o la que ya se tenga) y con **F12 → U** se llega a la última.
+- **GitHub lleva las versiones grandes** (con los cuatro `BOOT_*.bin` y MSXimusZboot, el programa de la tarjeta de instalación) y **los arreglos salen solo por la red**. Se instala la versión grande de GitHub (o la que ya se tenga) y con **F12 → U** se llega a la última.
 
 ## 5. Las cuatro variantes
 
@@ -70,13 +70,12 @@ Cada versión se publica en cuatro imágenes: **Nextor 2** o **Nextor 3**, cada 
 
 ## 6. El canal beta
 
-Además de las versiones oficiales hay un **canal beta** con builds de prueba de funciones nuevas. Las betas salen en **una sola variante, Nextor 2.1.4 con los menús en inglés**, y pueden fallar: son para probar, no para el uso de cada día.
+Además de las versiones oficiales hay un **canal beta** con builds de prueba de funciones nuevas. Las betas salen en las mismas cuatro variantes que las oficiales y pueden fallar: son para probar, no para el uso de cada día.
 
 - **B** en la página cambia la fila *Canal* de *Oficial* a *Beta* (o al revés) y busca enseguida la versión de ese canal.
 - Si hay una beta, la página dice *Beta: experimental*; **I** la instala como cualquier otra versión, en la ranura B, con la misma firma y las mismas comprobaciones.
 - La versión instalada lleva `beta` al lado del número mientras sea una beta.
 - **Para volver a la oficial**: **B** hasta *Oficial*; la página dice *Vuelta a la oficial* aunque la oficial sea más antigua que la beta, e **I** la instala. Otra forma es volver a la de fábrica (§7).
-- Si la placa usa Nextor 3 o los menús en castellano, la beta la cambia a Nextor 2.1.4 en inglés: la página lo avisa como cualquier cambio de variante (§5).
 
 ## 7. Si algo sale mal: las dos ranuras
 
@@ -111,7 +110,7 @@ En todos los de red, **U** lo intenta otra vez.
 
 ## 9. Perfiles del PL
 
-Una versión puede traer además **perfiles**: versiones del PL con otros chips (el primero será el de sonido), que se guardan en la microSD de TF1 y se cargan desde la página de perfiles ([capítulo 04, §10](04-menu.md)). Cada versión del sistema necesita los suyos: un perfil de una versión anterior no se carga con la nueva. Por eso, al instalar una versión, la página de actualización avisa con *Perfiles viejos: tecla P* si la tarjeta tiene perfiles que el servidor tiene más nuevos, y **P** lleva a la vista del servidor.
+Una versión puede traer además **perfiles**: versiones del PL con otros chips u otra máquina (Música, Dual, Turbo R y Turbo R V9990), que se guardan en la microSD de TF1 y se cargan desde la página de perfiles ([capítulo 04, §10](04-menu.md)). Cada versión del sistema necesita los suyos: un perfil de una versión anterior no se carga con la nueva. Por eso, al instalar una versión, la página de actualización avisa con *Perfiles viejos: tecla P* si la tarjeta tiene perfiles que el servidor tiene más nuevos, y **P** lleva a la vista del servidor.
 
 **F12 → P → S** (o **P** en la página de actualización) abre la vista **Servidor** de la página de perfiles: busca igual que la actualización, enseña el canal (*Oficial* o *Beta*) y la lista de perfiles de esa versión con su estado frente a la tarjeta:
 

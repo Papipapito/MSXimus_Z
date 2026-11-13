@@ -39,7 +39,7 @@ Teclea parte del nombre (mínimo 2 letras), RETURN, y la lista mezcla ROM, DSK, 
 
 La orden de carga no se adivina: los TSX de tsx.eslamejor llevan dentro (bloque `TSX.LOAD`) la misma orden que muestra su ficha —`RUN"CAS:"`, `BLOAD"CAS:",R`, `CLOAD` y `RUN`— y las "manos" teclean esa. Los CAS y los TSX sin esa ficha siguen usando la primera cabecera.
 
-Requisitos: red ([capítulo 07](07-wifi-file-hunter.md)) y la tarjeta de TF2 en FAT16, como para cualquier descarga del File-Hunter ([capítulo 03](03-tarjeta-sd.md)). Con el cable Ethernet del procesador el catálogo y la descarga de los TSX los lleva la propia máquina; con el módulo ESP32 de WiFi, el módulo, con su firmware de la carpeta `esp32/` del repositorio.
+Requisitos: red ([capítulo 07](07-wifi-file-hunter.md)) y la tarjeta de TF2 en FAT16, como para cualquier descarga del File-Hunter ([capítulo 03](03-tarjeta-sd.md)). Con el cable Ethernet del procesador el catálogo y la descarga de los TSX los lleva la propia máquina; con el módulo ESP32 de WiFi, el módulo, con su firmware del repositorio [`Papipapito/ESP32-for-FPGA`](https://github.com/Papipapito/ESP32-for-FPGA) (rama `c6`).
 
 ## 5. Lo que no hay todavía
 

@@ -9,8 +9,8 @@
 
 <p align="center">🇬🇧 <a href="README.md">English version</a></p>
 
-<p align="center"><img src="docs/img/v9968_devcon.jpg" alt="La demo DEVCON del V9968 en el MSXimus" width="820"/></p>
-<p align="center"><i>La demo oficial del V9968 de HRA!, en el MSXimus.</i></p>
+<p align="center"><img src="docs/img/z_escritorio_ventana.png" alt="El MSX arrancando dentro de una ventana del escritorio del MSXimus Z" width="820"/></p>
+<p align="center"><i>El MSX, arrancando dentro de una ventana del escritorio: reloj, «Now playing» y la tarjeta del sistema.</i></p>
 
 **No hace falta un MSX: es un MSX.** Se le enchufa una pantalla HDMI y un teclado USB, se ponen los juegos en una microSD y a encender.
 
@@ -27,7 +27,7 @@ Este repositorio contiene el core (`fpga/`) y el companion (`fpga/zynq/arm/`) de
 
 | | |
 |---|---|
-| **CPU** | Z80 a 3,58 MHz con **turbo real a 5,37 MHz** (F11). No se identifica como turbo R y no tiene R800 |
+| **CPU** | Z80 a 3,58 MHz con **turbo real a 5,37 MHz** (F11). El sistema normal no se identifica como turbo R ni tiene R800: para eso está el perfil **Turbo R** (fila *Perfiles*) |
 | **Vídeo** | El **[V9968](https://github.com/hra1129/V9968_Cartridge)** de HRA! (generación C): sprites multicolor escalables, 16 por línea, 256 KB de VRAM, comandos rápidos. Y un **V9990** (tiny9990 de [buppu3](https://github.com/buppu3)) en los puertos 60h-6Fh con su propia imagen: **Pausa** conmuta el HDMI entre los dos. HDMI 720p, bordes como un monitor de tubo, scanlines opcionales, y pantalla completa en 16:9 o en **4:3 con Scale3x** (F12 → V) |
 | **3D** | **[geo3d](https://github.com/alexmoncks/V9968_Cartridge)** de Alex Moncks: un coprocesador 3D en los puertos 9Dh/9Fh que transforma, recorta, sombrea y dibuja él mismo las caras con el motor de comandos del V9968: unos 200 cuadros sombreados por segundo |
 | **Audio** | Dos PSG, SCC y un segundo SCC en el slot 1, OPLL (MSX-MUSIC, IKAOPLL), MSX-Audio Y8950 con ADPCM y el **MoonSound completo** (OPL4 FM + tabla de ondas, la YRW801 en la DDR3). Música **WaveGame**, un **mezclador por fuente** con nota de prueba y estéreo de verdad canal a canal en todos los chips |
@@ -42,6 +42,19 @@ Este repositorio contiene el core (`fpga/`) y el companion (`fpga/zynq/arm/`) de
 | **Idiomas** | Menús, Ajustes y panel **en castellano o en inglés**, con Nextor 2.1.4 o Nextor 3: cuatro variantes a elegir |
 
 El menú de arranque: RETURN lanza, ESC arranca MSX-DOS/Nextor, **S** Ajustes, **W** WiFi, **F** File-Hunter, **H** ayuda. Manteniendo **S** durante el logo se entra en Ajustes aunque el menú esté apagado.
+
+## En imágenes
+
+Capturas de la salida HDMI de la placa, con la Z1.4.9.
+
+| | |
+|:---:|:---:|
+| <img src="docs/img/z_perfil_dual.png" alt="Perfil Dual: un juego en la ventana A y BASIC en la B" width="400"/> | <img src="docs/img/z_perfiles.png" alt="La página de perfiles del panel F12" width="400"/> |
+| **Perfil Dual**: dos MSX a la vez, cada uno en su ventana | **Perfiles** (F12 → P): la placa se convierte en otra máquina |
+| <img src="docs/manual/capturas/08-f12-video.png" alt="El panel F12" width="400"/> | <img src="docs/img/z_turbo_r_r800.png" alt="El perfil Turbo R medido con Z80 Frequency Benchmark" width="400"/> |
+| El **panel F12**: temperatura, tarjeta, USB, vídeo y red | **Perfil Turbo R**: el R800 en modo DRAM, medido con el Z80 Frequency Benchmark de NataliaPC |
+| <img src="docs/img/v9968_tech_demo.png" alt="V9968 TECH DEMO" width="400"/> | <img src="docs/img/v9968_devcon_hdmi.png" alt="La demo DEVCON del V9968" width="400"/> |
+| El **V9968 TECH DEMO** de renatus | **DEVCON**, la demo del V9968 de HRA!: sprites de modo 3 sobre el fondo |
 
 ## Lo que hace falta
 
@@ -173,7 +186,7 @@ Todo lo demás, en [`docs/manual/12-actualizar.md`](docs/manual/12-actualizar.md
     OPL4 YRW801 OK
   Red
     192.168.2.105
-  [U] Actualizar   [F12] Salir
+  [U] Actualizar  [P] Perfiles  [F12] Salir
   El MSX está en pausa.
 ```
 
@@ -204,9 +217,9 @@ Más demos de geo3d y del V9968: [kanon-ai/V9968_Geo3D_SampleDemo](https://githu
 
 ## Cómo se construye
 
-**Lo que se puede compilar desde este repositorio:** el **bitstream** (Vivado 2019.2) y el **companion y el FSBL** (toolchain ARM GNU 14.2, `arm-none-eabi`; sin SDK ni Vitis, basta xsdb). Los bancos de pruebas corren en WSL (Ubuntu-24.04).
+**Lo que se puede compilar desde este repositorio:** el **bitstream** (Vivado 2019.2) y el **companion y el FSBL** (toolchain ARM GNU 14.2, `arm-none-eabi`; sin SDK ni Vitis, basta xsdb). Los bancos de pruebas son del repositorio de desarrollo y no van en esta copia.
 
-**Lo que no:** el **menú de arranque y los packs de BIOS**. El fuente del menú está aquí (`bios/`), pero ensamblarlo y montar un pack necesita las ROM de sistema del MSX, que llevan copyright y viven en un repositorio privado: esos dos pasos no se reproducen desde aquí. Quien quiera un `BOOT.bin` propio saca el pack de BIOS de uno publicado (es una partición del fichero) y compila el resto.
+**Lo que no:** el **menú de arranque y los packs de BIOS**. El fuente del menú (`bios/`) no se publica: ensamblarlo y montar un pack necesita las ROM de sistema del MSX, que llevan copyright y viven en un repositorio privado, así que esos dos pasos no se reproducen desde aquí. Quien quiera un `BOOT.bin` propio saca el pack de BIOS de uno publicado (es una partición del fichero) y compila el resto.
 
 ```bash
 # 1. Bitstream (~15 min)            -> fpga/zynq/msximus_zynq.bit
@@ -234,7 +247,7 @@ La YRW801 (la tabla de ondas del OPL4, 2 MB) se puede sustituir por un fichero d
 [`docs/INDICE.md`](docs/INDICE.md) reúne dos documentos:
 
 - Una **[guía rápida](docs/manual/00-guia-rapida.md)** y un **manual de usuario** de doce capítulos: qué es, instalación, tarjetas SD, menú, ROMs y mappers, MSX-DOS y Nextor, red, audio, vídeo, problemas, cinta y actualizar.
-- Una **referencia técnica** de trece: arquitectura, puertos de E/S, mapas de memoria, pack de BIOS, V9968, SD y DMA, construcción, verificación, changelog, cinta, actualización por red, companion, y V9990 con geo3d.
+- Una **referencia técnica** de quince: arquitectura, puertos de E/S, mapas de memoria, pack de BIOS, V9968, SD y DMA, construcción, verificación, changelog, cinta, actualización por red, companion, V9990 con geo3d, y los perfiles Dual y Turbo R.
 
 ## Mapa del repositorio
 
@@ -250,8 +263,7 @@ fpga/zynq/            Lo propio de la Zynq
   arm/fsbl/           FSBL con el salto a la ranura B       arm/boot/make_boot.sh   monta el BOOT.bin
   ota/                Servidor, firma y publicación de las actualizaciones
   tools/              Herramientas de xsdb (arranque, teclas, pantalla, telemetría, QSPI...)
-bios/                 Menú de arranque de 32 KB (asmsx) y herramientas de packs (los packs, en el repo privado de BIOS)
-(el firmware del ESP32 no está aquí: github.com/Papipapito/ESP32-for-FPGA, rama c6)
+(el menú de arranque y los packs de BIOS no se publican; el firmware del ESP32 está en github.com/Papipapito/ESP32-for-FPGA, rama c6)
 docs/                 Manual de usuario y referencia técnica
 ```
 

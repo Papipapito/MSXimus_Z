@@ -135,7 +135,7 @@ La release `Z1.4.9` de GitHub trae los cuatro `BOOT_Z1.4.9_*.bin` listos para gr
 Quien prefiera montarlo (con sus propias ROMs en el pack, o con un core compilado) tiene un script de bash:
 
 ```bash
-OTA_VERSION=Z1.3.1 OTA_SERIE=2026103002 fpga/zynq/arm/boot/make_boot.sh [pack.bin] [yrw801.rom]
+OTA_VERSION=Z1.4.9 OTA_SERIE=2026111301 fpga/zynq/arm/boot/make_boot.sh [pack.bin] [yrw801.rom]
 ```
 
 Busca `fpga/zynq/arm/fsbl/fsbl.elf`, `fpga/zynq/arm/companion/companion.elf` y `fpga/zynq/msximus_zynq.bit`; el pack por defecto es el de Nextor 2.1.4 en castellano y la ROM de ondas por defecto `yrw801.rom`, los dos de `packs/zynq/` del repositorio privado de BIOS `Papipapito/bios-msxnano-msximus`, que se clona como carpeta hermana de este repositorio (o donde diga la variable de entorno `MSXIMUS_BIOS_PRIV`). La ROM de ondas se copia a `arm/boot/` para el `.bif`. Llama al `bootgen` de Vivado 2019.2 y deja `BOOT.bin` en `fpga/zynq/arm/boot/`. `OTA_VERSION` y `OTA_SERIE` (un entero creciente, tipo AAAAMMDDNN) rellenan el `ota_info`; sin ellas la imagen se identifica como `dev` con serie 0. La variante y el idioma los deduce el script del propio pack. Los ficheros `.elf` y `.bit` no se versionan: salen de compilar ([capítulo 07 de la referencia técnica](../tecnica/07-construccion.md)). El `fsbl.elf` tampoco va en la release de GitHub: quien graba la QSPI lo compila (sección 4).
@@ -308,7 +308,7 @@ Con el módulo cableado y con firmware, su pantalla enseña el estado (red, turb
 2. SW1 en **QSPI** con el `BOOT.bin` grabado, o en **SD** con el `BOOT.bin` en una tarjeta en TF1.
 3. Corriente.
 
-El FSBL carga el core y el companion; el companion prepara la tarjeta, el USB, la red y la OLED, lee los ajustes de la QSPI y suelta el MSX: logo y, en una placa recién grabada, el navegador de la tarjeta. Al pulsar **S** en el menú, Ajustes muestra la versión del core («Z1.3.1»; los arreglos añaden un tercer número); la cabecera del panel **F12** y la OLED enseñan la misma.
+El FSBL carga el core y el companion; el companion prepara la tarjeta, el USB, la red y la OLED, lee los ajustes de la QSPI y suelta el MSX: logo y, en una placa recién grabada, el navegador de la tarjeta. Al pulsar **S** en el menú, Ajustes muestra la versión del sistema («Z1.4.9»); la cabecera del panel **F12** y la OLED enseñan la misma.
 
 Los ajustes de fábrica: menú al arrancar activado, turbo de arranque apagado, ganancia ×5 y los siete canales del mezclador a 8/8. Quien prefiera que arranque directamente en el MSX, como un ordenador de siempre: **S** durante el logo, desmarcar **Menú al arrancar** y **Save & Restart**. Ese primer Save & Restart escribe el bloque de ajustes en la QSPI; a partir de ahí sobrevive a los apagados. Con el menú apagado, **manteniendo S durante el logo** se entra en Ajustes igualmente. El [capítulo 04](04-menu.md) cuenta el menú entero.
 

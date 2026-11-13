@@ -1,12 +1,12 @@
 # Capturas de la guía rápida
 
-Imágenes que usa [`../00-guia-rapida.md`](../00-guia-rapida.md). Formato PNG, tomadas de la HDMI de la placa (1280 × 720) con la Z1.3.
+Imágenes que usa [`../00-guia-rapida.md`](../00-guia-rapida.md). Formato PNG, tomadas de la HDMI de la placa (1280 × 720).
 
 | Fichero | Qué debe mostrar |
 |---|---|
 | `01-navegador.png` | El navegador de la SD dentro de una carpeta de juegos, con una fila seleccionada, las pestañas, el contador y el pie de teclas |
 | `02-lanzar-disco.png` | La pantalla *Lanzar disco* con un `.DSK` seleccionado y el estado *DSK listo para montar.* |
-| `03-ajustes.png` | La pantalla *Ajustes* completa, con la versión del core (`Z1.3.1`) y la leyenda de teclas |
+| `03-ajustes.png` | La pantalla *Ajustes* completa, con la versión del sistema (`Z1.4.9`) y la leyenda de teclas |
 | `03b-ajustes-2.png` | No hace falta: Ajustes tiene una sola página. La página del mezclador es `07-f12-mezclador.png` |
 | `04-ayuda.png` | La pantalla de ayuda (tecla H) |
 | `05-filehunter.png` | File-Hunter con una búsqueda hecha y la lista de resultados (ROM, DSK y alguna cinta) |
@@ -20,8 +20,10 @@ Imágenes que usa [`../00-guia-rapida.md`](../00-guia-rapida.md). Formato PNG, t
 | `12-ventana-b.png` | Ventana B: el escritorio del V9990 con la barra superior (hora), NOW PLAYING, SYSTEM y el juego en la ventana |
 | `13-ventana-v.png` | Ventana V: lo mismo con la ventana grande |
 | `14-v9990.png` | Un juego del V9990 (Xybots, Dream Puzzle...) a pantalla completa |
-| `15-lanzar-rom.png` | *Lanzar ROM* con una ROM de mapper conocido: fichero, tamaño, mapper, SRAM o GM2, barra de progreso y pie de teclas |
+| `15-lanzar-rom.png` | *Lanzar ROM* con una ROM de mapper conocido: fichero, tamaño, mapper, barra de progreso y pie de teclas (sin `G = GM2`: desde la Z1.4.9 solo sale con Slot 1 = Game Master 2) |
 | `16-wifi-setup.png` | La pantalla *Wi-Fi Setup* (tecla W) con sus cuatro opciones |
 | `17-pruebas.png` | El menú *Pruebas* (tecla T) |
 
-Capturas hechas en placa por HDMI. `10b-f12-actualizar-beta.png`: la página de actualización con el canal beta elegido.
+`03-ajustes`, `06-f12-info`, `08-f12-video`, `09-f12-red` y `15-lanzar-rom` son de la Z1.4.9 (12 y 13/11/2026, con los menús en inglés). Las demás se hicieron en placa el 30/10/2026 con la beta previa a la Z1.3.1: en el panel F12 y en el escritorio se lee «Z1.3b14». `10b-f12-actualizar-beta.png`: la página de actualización con el canal beta elegido.
+
+Las capturas de la portada (escritorio, perfil Dual, perfiles, Turbo R y demos del V9968) están en [`../../img/`](../../img/).

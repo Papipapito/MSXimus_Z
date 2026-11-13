@@ -30,7 +30,7 @@ El pack de BIOS lleva Nextor dentro, en el slot 3-2 de la máquina, y hay dos pa
 | `pack_bios_msximus.bin` | **2.1.4** | El de uso diario. Estable, con años de software probado encima. Es el que se recomienda |
 | `pack_bios_msximus_nextor3.bin` | **3.0** | La versión final de Konamiman. Hay software que todavía no la lleva bien |
 
-En esta placa el pack no se graba aparte: va **dentro del `BOOT.bin`** (junto al bitstream, el companion y la tabla de ondas del OPL4), y al arrancar el companion lo deja en la DDR3, de donde el core lo lee. Por eso hay un `BOOT.bin` por versión de Nextor y de idioma (los cuatro `BOOT_Z1.3.0_*.bin` de la release), y cambiar de Nextor es cambiar de `BOOT.bin`: grabarlo en la QSPI o copiarlo a TF1, como cuenta el [capítulo 02](02-instalacion.md). Los ajustes no se pierden al cambiar: viven en un sector propio de la QSPI, no en el pack. **Hay que cambiar también el sistema de la tarjeta de TF2**: el `NEXTOR.SYS` (y `COMMAND2.COM` o `COMMAND3.COM`) tiene que ser el de ese Nextor, y con el de la otra versión el MSX no llega a DOS. [MSX SD Maker](03-tarjeta-sd.md) lo copia al preparar la tarjeta; hay que elegir en él el mismo Nextor que lleva la máquina.
+En esta placa el pack no se graba aparte: va **dentro del `BOOT.bin`** (junto al bitstream, el companion y la tabla de ondas del OPL4), y al arrancar el companion lo deja en la DDR3, de donde el core lo lee. Por eso hay un `BOOT.bin` por versión de Nextor y de idioma (los cuatro `BOOT_<versión>_*.bin` de la release), y cambiar de Nextor es cambiar de `BOOT.bin`: grabarlo en la QSPI o copiarlo a TF1, como cuenta el [capítulo 02](02-instalacion.md). Los ajustes no se pierden al cambiar: viven en un sector propio de la QSPI, no en el pack. **Hay que cambiar también el sistema de la tarjeta de TF2**: el `NEXTOR.SYS` (y `COMMAND2.COM` o `COMMAND3.COM`) tiene que ser el de ese Nextor, y con el de la otra versión el MSX no llega a DOS. [MSX SD Maker](03-tarjeta-sd.md) lo copia al preparar la tarjeta; hay que elegir en él el mismo Nextor que lleva la máquina.
 
 El driver de la tarjeta es el mismo en los dos packs, hecho para este core, y declara la versión **3.5.4** en las dos versiones de Nextor. Al arrancar sondea qué tiene delante y usa lo más rápido que encuentre: los puertos de E/S del controlador en vez de la ventana de memoria, órdenes multibloque en vez de un mandato por sector y, para leer, la **DMA en modo lógico**: el driver le da al core la dirección del búfer de Nextor y el core copia los sectores a la RAM del MSX sin que el Z80 mueva un byte. Esa última ruta solo entra cuando el búfer está en la RAM del mapper (slot 3-0) y fuera de la página 1; si no, el driver lee por puertos como siempre. Nada de esto se configura: lo decide el driver en cada petición.
 
@@ -40,7 +40,7 @@ Estado:
 
 - **Nextor 2.1.4** está comprobado en la placa: arranque en DOS por DMA, `AUTOEXEC.BAT`, `DIR` de una segunda partición, Multi Mente cargado y funcionando, y crear, leer, listar y borrar ficheros desde DOS sobre la tarjeta real.
 - **Nextor 3.0** lleva el mismo driver que la 2.1.4, así que se comporta igual con la tarjeta.
-- Un caso conocido con Nextor 3 y este mismo driver: **VGMPlay** se cuelga al reproducir un VGM de OPL3, mientras que con Nextor 2.1.4 reproduce bien y MoonBlaster con OPL4 funciona bajo Nextor 3. Es del reproductor, no del core ni del driver; conviene reportarlo a sus autores citando la versión de Nextor 3 que se use. <!-- VERIFICAR: sin comprobar con la beta 2 -->
+- Un caso conocido con Nextor 3 y este mismo driver: **VGMPlay** se cuelga al reproducir un VGM de OPL3, mientras que con Nextor 2.1.4 reproduce bien y MoonBlaster con OPL4 funciona bajo Nextor 3. Es del reproductor, no del core ni del driver; conviene reportarlo a sus autores citando la versión de Nextor 3 que se use.
 
 ## 3. Arrancar en DOS
 
@@ -48,7 +48,7 @@ Con el ajuste **Menú al arrancar** en Off, la máquina arranca directamente en 
 
 En cualquier caso, la tarjeta de TF2 necesita en la raíz de su primera partición los ficheros de sistema: `NEXTOR.SYS` y `COMMAND2.COM` para Nextor 2, o `NEXTOR.SYS` y `COMMAND3.COM` para Nextor 3, y opcionalmente un `AUTOEXEC.BAT`. Sin ellos se arranca en BASIC, con el disco accesible desde ahí.
 
-[MSX SD Maker](https://github.com/Papipapito/SD_Maker) trae el contenido de partida de la tarjeta y lo copia él; a mano, a la raíz va **`base/`** (un `AUTOEXEC.BAT` que monta C: y D: con `MAPDRV` y arma el `PATH`; `UTIL/` con las utilidades genéricas; `WIFI/` con el cliente UNAPI y el File-Hunter de DOS; y las carpetas `FHUNT/` y `TMP/`, vacías a propósito) más **la carpeta de la versión de Nextor que lleve el pack**: `nextor-2.1.4/` o `nextor-3.0.0-beta2/`. No hay que mezclar las herramientas de una versión con el kernel de la otra: `MAPDRV`, por ejemplo, cambió de sintaxis entre las dos.
+[MSX SD Maker](https://github.com/Papipapito/SD_Maker) trae el contenido de partida de la tarjeta y lo copia él; a mano, a la raíz va **`base/`** (un `AUTOEXEC.BAT` que monta C: y D: con `MAPDRV` y arma el `PATH`; `UTIL/` con las utilidades genéricas; `WIFI/` con el cliente UNAPI y el File-Hunter de DOS; y las carpetas `FHUNT/` y `TMP/`, vacías a propósito) más **la carpeta de la versión de Nextor que lleve el pack**: `nextor-2.1.4/` o `nextor-3.0.0/`. No hay que mezclar las herramientas de una versión con el kernel de la otra: `MAPDRV`, por ejemplo, cambió de sintaxis entre las dos.
 
 Desde DOS todo es lo de siempre: `DIR`, `COPY`, ejecutar `.COM`, Nextor con sus utilidades. Las particiones que Nextor vea son unidades A:, B:, etc.
 
@@ -64,7 +64,7 @@ Desde el navegador del menú, RETURN sobre un `.dsk` y RETURN otra vez para **mo
 
 Requisitos: el `.dsk` en clusters consecutivos (capítulo 03; si no lo está, el menú avisa y basta con copiarlo de nuevo desde el PC). El descriptor va a un sitio distinto según el formato de la partición: en **FAT32** a un sector reservado de la propia partición, invisible desde el PC y sin crear ningún fichero; en **FAT16** al fichero oculto `NEXTOR.EMU` de la raíz, que el menú crea la primera vez (512 bytes, un cluster) y a partir de ahí solo reescribe. Es la única cosa que el menú crea en la tarjeta: todo lo demás, incluido el propio `.dsk`, se queda como está.
 
-Los juegos de disco que usan MSX-DOS y música FM, como Aleste, funcionan así con las dos versiones de Nextor. Los que necesitan cambiar de disco no tienen forma de hacerlo: se monta una imagen por arranque.
+Los juegos de disco que usan MSX-DOS y música FM, como Aleste, funcionan así con las dos versiones de Nextor. Los que necesitan cambiar de disco se montan como un solo `.dsk` con todos sus discos seguidos (apartado *Juegos de varios discos en un solo `.dsk`*, al final).
 
 ## 5. Rendimiento
 
@@ -116,7 +116,7 @@ El panel de telemetría de desarrollo (`tools/tel.tcl`, capítulo técnico) ense
 
 - No hay MSX-DOS 2 en ROM aparte de Nextor. No hace falta: Nextor es compatible con él.
 - No hay controladora de disquetes clásica (conector de 34 pines ni WD2793): la única disquetera posible es la USB de la sección 7, que está pendiente de probar con hardware real.
-- No hay cambio de disco en caliente para los juegos de varios discos en imagen, ni en disquete.
+- No hay cambio de disco en caliente con los disquetes de verdad. Los juegos de varios discos en imagen sí van, unidos en un solo `.dsk` (apartado siguiente).
 - No hay cambio de tarjeta en caliente: sacar, meter y el botón de reset del MSX (K2).
 - No hay ranura de cartucho, así que Nextor es la única interfaz de disco de la máquina.
 

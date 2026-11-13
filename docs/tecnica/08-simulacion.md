@@ -4,6 +4,8 @@ En el MSXimus Z buena parte de lo que en otro proyecto se simularía se comprueb
 
 Los bancos corren con Icarus Verilog o Verilator **en WSL Ubuntu-24.04** (no en la distribución por defecto: `wsl -d Ubuntu-24.04`). Casi todos los `run_*.sh` se relanzan solos dentro de WSL, así que se lanzan desde Git Bash. Los que usan Verilator compilan una vez en `/tmp` y ejecutan todos los casos en la misma llamada.
 
+> **En esta copia pública no están los bancos.** Las carpetas de pruebas de las secciones 1 a 4 (`fpga/zynq/tb/`, los bancos de `tools/`, `fpga/zynq/arm/companion/tests/` y `bios/`) son del repositorio de desarrollo y no se publican: el capítulo queda como relación de qué se comprueba antes de cada versión. Sí están aquí `tools/lint.sh` y las herramientas de xsdb de la sección 5 (`fpga/zynq/tools/`).
+
 ## 1. Bancos del PL de la Zynq (`fpga/zynq/tb/`)
 
 | Banco | Qué cubre | Resultado |

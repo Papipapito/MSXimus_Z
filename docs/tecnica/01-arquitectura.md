@@ -142,7 +142,7 @@ Las herramientas `tools/tel.tcl`, `cfg.tcl`, `wg.tcl`, `key.tcl`, `vsel.tcl` y `
 
 Programa bare-metal (sin sistema operativo) en el core 0 del PS, `fpga/zynq/arm/companion/`. Hace el proxy de sectores de TF2 (SDBOX) y las E/S de perfiles de TF1, el USB host con TinyUSB, la red con lwIP y Mbed TLS sobre el GEM0 (presenta al MSX un «ESP32» por la UART1 EMIO, ver el [manual](../manual/07-wifi-file-hunter.md)), el panel F12 por la UART0 EMIO con el protocolo del overlay (mientras está abierto el Z80 se congela), la OLED SSD1306, el bloque de ajustes de la QSPI, WaveGame y la cinta virtual, y la actualización por red. Todo ello está en el [capítulo 12](12-companion.md); la actualización, en el [capítulo 11](11-actualizacion.md).
 
-El FSBL propio (`arm/fsbl/`) hace `ps7_init`, entrena la DDR y, si hay una ranura B confirmada, salta a ella. `arm/boot/make_boot.sh` empaqueta siete particiones en un `BOOT.bin` de unos 6,16 MB: FSBL, bitstream, companion, `zeros.bin` (buzón a cero, en 0x1FF00000), el pack (0x10F00000), la YRW801 (0x0F000000) y `ota_info` (0x00E10000).
+El FSBL propio (`arm/fsbl/`) hace `ps7_init`, entrena la DDR y, si hay una ranura B confirmada, salta a ella. `arm/boot/make_boot.sh` empaqueta siete particiones en un `BOOT.bin` de unos 6,4 MB (6.377.024 bytes en la Z1.4.9): FSBL, bitstream, companion, `zeros.bin` (buzón a cero, en 0x1FF00000), el pack (0x10F00000), la YRW801 (0x0F000000) y `ota_info` (0x00E10000).
 
 ## 8. `top_zynq.v` se edita a mano
 

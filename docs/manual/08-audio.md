@@ -76,7 +76,7 @@ Ocho filas, una por canal:
 | 1 | **PSG** | Los dos PSG | 0/8 a 8/8 |
 | 2 | **SCC** | El SCC del cartucho y el segundo SCC del slot 1 | 0/8 a 8/8 |
 | 3 | **OPLL (FM-PAC)** | El MSX-MUSIC | 0/8 a 8/8 |
-| 4 | **MSX-AUDIO** | El Y8950, FM y ADPCM juntos | 0/8 a 8/8 |
+| 4 | **AUDIO/PCM** | El Y8950 (MSX-AUDIO), FM y ADPCM juntos; en los perfiles Turbo R, también el PCM | 0/8 a 8/8 |
 | 5 | **OPL4 FM (OPL3)** | La parte FM del MoonSound | 0/8 a 8/8 |
 | 6 | **OPL4 wave** | La tabla de ondas del MoonSound | 0/8 a 8/8 |
 | 7 | **WaveGame** | La voz WAV del WaveGame | 0/8 a 8/8 |
@@ -209,4 +209,4 @@ El MP3 lo descodifica el companion (minimp3, con la FPU del ARM) a menos del 2 %
 
 - Salida analógica: la placa no trae ninguna; todo va por el HDMI, así que hace falta un televisor o un extractor de audio HDMI.
 - Volumen en el panel F12: el panel del companion enseña estado, temperatura y tensiones, no toca el sonido. El volumen se gobierna con el mezclador o con el televisor.
-- Chips fuera de la lista: no hay Darky ni SFG-01.
+- Chips fuera de la lista: no hay Darky. El YM2151 del SFG-01 y el SN76489 no están en el sistema normal: los lleva el perfil **Música** (F12 → P).

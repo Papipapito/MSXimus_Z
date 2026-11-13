@@ -132,12 +132,12 @@ Un segundo YM2149 completo, con la misma decodificación que el principal despla
 
 | Puerto | Devuelve |
 |---|---|
-| 29h | Tercer dígito de la versión (arreglos), `FPGA_PATCH` del bitstream: 01h en la Z1.3.1 (el 2Fh devuelve A3h) |
+| 29h | Tercer dígito de la versión del PL (arreglos), `FPGA_PATCH` del bitstream: 07h desde la Z1.4.7 (el 2Fh devuelve A4h) |
 | 2Dh | Heredado del decodificador USB del PL: bits 7-6 error de conexión, 5-4 y 3-2 tipo de cada puerto USB, 1-0 cuenta de informes. Sin uso en el MSXimus Z (el USB host lo lleva el PS y entra por el buzón) |
 | 2Eh | Estado interno del ratón MSX: bit 7 ratón USB presente, bit 6 puerto 2 elegido, bit 5 nivel del pin 8 del puerto 2, bits 4-2 fase de la máquina del ratón, bits 1-0 cuenta de informes |
-| 2Fh | Versión del core: A3h (Z1.3). Nibble alto A o mayor = línea Zynq («Z» + alto − 9), nibble bajo = revisión. La serie 3.x es la del MSXimus original |
+| 2Fh | Versión del PL: A4h (Z1.4). Nibble alto A o mayor = línea Zynq («Z» + alto − 9), nibble bajo = revisión. La serie 3.x es la del MSXimus original |
 
-Ajustes muestra la versión como «Z» + 2Fh + el tercer dígito de 29h en hexadecimal (0Ch se pinta C). 29h solo se imprime si vale de 1 a 15; 0 o FFh (un core sin ese puerto) no añaden dígito. Los puertos 29h y 2Fh se deciden en un solo término del multiplexor de lectura: 29h devuelve el parche y 2Fh la versión. Un core anterior a que existiera 2Fh devuelve FFh, y el menú dice «desconocida».
+El menú pinta una versión como «Z» + 2Fh + el tercer dígito de 29h en decimal (1 a 99; 0 o FFh, un core sin ese puerto, no añaden dígito). Esos dos puertos dan la versión **del PL** (Z1.4.7), que solo cambia cuando cambia el bitstream. Desde la Z1.4.9, lo que Ajustes enseña es la versión **del sistema**: antes de soltar el MSX, el companion sustituye en el pack las dos lecturas de esos puertos (`IN A,(2Fh)` de Ajustes e `IN A,(29h)` de `ver_pnib`) por `LD A,n` con la versión de `ota_info` (`ota_menu_version`, en `ota.c`); cambia las dos o ninguna. Los puertos 29h y 2Fh se deciden en un solo término del multiplexor de lectura: 29h devuelve el parche y 2Fh la versión. Un core anterior a que existiera 2Fh devuelve FFh, y el menú dice «desconocida».
 
 ### 34h-37h: diagnóstico del OPL4
 

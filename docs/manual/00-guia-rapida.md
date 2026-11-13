@@ -1,6 +1,6 @@
 # Guía rápida del MSXimus Z
 
-Cómo se usa el MSXimus Z (Z1.3.1) el primer día: qué conectar, qué se ve al encender, qué hace cada pantalla del menú y qué teclas tiene. Frases cortas y solo lo que hace falta. El detalle de cada cosa está en los capítulos del manual, enlazados en cada apartado y al final.
+Cómo se usa el MSXimus Z (Z1.4.9) el primer día: qué conectar, qué se ve al encender, qué hace cada pantalla del menú y qué teclas tiene. Frases cortas y solo lo que hace falta. El detalle de cada cosa está en los capítulos del manual, enlazados en cada apartado y al final.
 
 **¿Placa nueva, sin nada grabado?** Antes de esto va la [puesta en funcionamiento](02-instalacion.md#puesta-en-funcionamiento-paso-a-paso) del capítulo 02: lo que hace falta y cómo dejarla instalada, en unos diez minutos y sin Vivado.
 
@@ -70,8 +70,8 @@ RETURN sobre una ROM abre **Lanzar ROM**: nombre, tamaño, mapper y, si procede,
 | **RETURN** | Cargar y lanzar la ROM |
 | **M** | Cambiar el mapper (Plain, Konami, Konami-SCC, ASCII8, ASCII16, NEO-8, NEO-16, Plain 0000h, ASCII16-X) |
 | **S** | SRAM de cartucho On/Off (solo ASCII8 y ASCII16) |
-| **G** | Game Master 2 On/Off (solo Konami y Konami-SCC) |
-| **V** | Lanzar dentro de una **ventana** con el escritorio del V9990 (juego a ×0,75) |
+| **G** | Game Master 2 On/Off. Solo sale con *Slot 1 = Game Master 2* en Ajustes y un mapper Konami o Konami-SCC |
+| **V** | Lanzar dentro de una **ventana** con el escritorio del V9990 (juego a ×0,75). Solo sale si el sistema tiene V9990: el perfil Turbo R no lo lleva |
 | **B** | Lo mismo, con la ventana más pequeña (juego a ×0,5) |
 | **ESC** | Volver sin lanzar |
 
@@ -108,7 +108,7 @@ La pantalla **Ajustes** tiene una sola página y se sale con ESC **sin guardar**
 | **Mezclador de audio** | | Abre la página del mezclador |
 | **Save & Restart** | | Guarda todo en la QSPI y reinicia el MSX |
 
-Debajo sale la versión del core (`Z1.3.1`).
+Debajo sale la versión del sistema (`Z1.4.9`), la misma de la cabecera del panel F12 y de la OLED.
 
 | Tecla | Acción |
 |---|---|
@@ -118,7 +118,7 @@ Debajo sale la versión del core (`Z1.3.1`).
 
 #### Mezclador de audio
 
-Ocho filas: *Ganancia maestra* (x1 a x8, de fábrica x5) y siete canales de 0/8 a 8/8 (PSG, SCC, OPLL, MSX-AUDIO, OPL4 FM, OPL4 wave, WaveGame). Cada cambio toca una nota en ese chip.
+Ocho filas: *Ganancia maestra* (x1 a x8, de fábrica x5) y siete canales de 0/8 a 8/8 (PSG, SCC, OPLL, AUDIO/PCM, OPL4 FM, OPL4 wave, WaveGame). Cada cambio toca una nota en ese chip.
 
 ![Mezclador de audio](capturas/07-f12-mezclador.png)
 
@@ -180,11 +180,11 @@ Se refresca cada segundo.
 
 | Bloque | Qué dice |
 |---|---|
-| Cabecera | `MSXimus Z` y la versión (`Z1.3.1`) |
+| Cabecera | `MSXimus Z` y la versión (`Z1.4.9`) |
 | Sistema | Temperatura del chip (verde hasta 60 °C, amarillo hasta 75, rojo más), su máximo, tensiones internas y tiempo encendido |
 | Tarjeta SD | La de TF2: tamaño en MB y errores, o `sin tarjeta` |
 | USB | Cuántos dispositivos y de qué tipo |
-| MSX | Z80 a 3,58 o 5,37 MHz (`turbo`), SCREEN actual, el vídeo en la HDMI (`V9968`, `V9990` o `V9991` con ventana) y el estado de la ROM de ondas del MoonSound (`YRW801 OK`) |
+| MSX | Z80 a 3,58 o 5,37 MHz (`turbo`); en los perfiles Turbo R, qué CPU manda (`CPU R800 ROM`, `CPU R800 DRAM` o el Z80). SCREEN actual, el vídeo en la HDMI (`V9968`, `V9990` o `V9991` con ventana) y el estado de la ROM de ondas del MoonSound (`YRW801 OK`) |
 | V9968 completo | `16:9` o `4:3 Scale3x` |
 | Red | La IP del cable o, sin cable, `WiFi` y la IP de la ESP32-S3. Sin ninguna: `sin cable o sin IP` |
 
@@ -194,6 +194,7 @@ Se refresca cada segundo.
 |---|---|
 | **V** | Alternar 16:9 / 4:3 Scale3x en el V9968 a pantalla completa (se guarda) |
 | **U** | Abrir la página de actualización |
+| **P** | Abrir la página de perfiles |
 | **F12** | Cerrar el panel |
 
 ![Panel F12: vídeo](capturas/08-f12-video.png)
@@ -220,7 +221,7 @@ Con el canal beta elegido (tecla **B**), la misma página muestra la última bet
 | **ESC** | Volver a la página de información. Una descarga en marcha sigue |
 | **F12** | Cerrar el panel |
 
-Pasos: **F12**, **U**, **I**, esperar (*Bajar, Borrar, Grabar, Verif*), **R**. No apagar mientras graba. Si la imagen nueva no arranca, apagar y encender vuelve a la de fábrica. Cambiar de Nextor pide su `NEXTOR.SYS` en la tarjeta de TF2. El canal beta ofrece una sola variante (Nextor 2.1.4, menús en inglés) y puede fallar. Más en el [capítulo 12](12-actualizar.md).
+Pasos: **F12**, **U**, **I**, esperar (*Bajar, Borrar, Grabar, Verif*), **R**. No apagar mientras graba. Si la imagen nueva no arranca, apagar y encender vuelve a la de fábrica. Cambiar de Nextor pide su `NEXTOR.SYS` en la tarjeta de TF2. El canal beta lleva versiones de prueba, con las mismas cuatro variantes, y puede fallar. Más en el [capítulo 12](12-actualizar.md).
 
 ## 4. Modos de vídeo
 

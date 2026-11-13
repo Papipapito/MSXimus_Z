@@ -5,7 +5,7 @@ Qué trae cada versión del MSXimus Z, de la más nueva a la más antigua. Las v
 
 ## Z1.4.9 — 13/11/2026 · oficial (GitHub y la red) · El R800 ya no se duerme tras un HALT, y Ajustes, GM2 y V/B en el menú
 
-**Oficial el 13/11** (serie 2026111301, `archivo/release/build_z149.py`): los mismos binarios de la beta del 12/11 salvo el `ota_info` (serie, fecha y `canal=oficial`); en GitHub con los cuatro `BOOT.bin` y **MSXimusZboot** (Windows y macOS), sin `.elf` ni `.bit`. Reúne las betas Z1.4.5 a Z1.4.8 (abajo). La beta fue la serie 2026111109.
+**Oficial el 13/11** (serie 2026111301): los mismos binarios de la beta del 12/11 salvo el `ota_info` (serie, fecha y `canal=oficial`); en GitHub con los cuatro `BOOT.bin` y **MSXimusZboot** (Windows y macOS), sin `.elf` ni `.bit`. Reúne las betas Z1.4.5 a Z1.4.8 (abajo). La beta fue la serie 2026111109.
 
 El PL del estándar, Música y Dual es el de la Z1.4.7 (`FPGA_PATCH` = 7). Los perfiles **TR y TRV se recompilan** con los dos primeros arreglos. Todo sale de lo que se vio en placa con la Z1.4.4 y la Z1.4.8.
 
@@ -25,7 +25,7 @@ El PL del estándar, Música y Dual es el de la Z1.4.7 (`FPGA_PATCH` = 7). Los p
   - `ota_host`: casos 0 (versión de Ajustes) y 0b (la fila de la CPU del F12);
   - `emu_menu_dual.py` con V9990 y GM2 (1194 comprobaciones);
   - `perfil_ota_host`, `mxpf_host`, `tf2_host` y `dual_host` sin fallos.
-- **Probada en placa (12/11):** *Ghosts'n Goblins* V9990 en TRV ya no da saltos; con el GM2 apagado en Ajustes, Lanzar ROM ya no lo ofrece; lo demás, bien. Sigue en beta: faltan más pruebas antes de la versión final. Registro en `archivo/release/z1.4.9b/`.
+- **Probada en placa (12/11):** *Ghosts'n Goblins* V9990 en TRV ya no da saltos; con el GM2 apagado en Ajustes, Lanzar ROM ya no lo ofrece; lo demás, bien. Fue la beta de la serie 2026111109; un día después pasó a oficial sin más cambios.
 
 ## Z1.4.8 — 11/11/2026 · beta (canal beta de la red) · Los perfiles del servidor ya no se quedan «buscando»
 
@@ -36,7 +36,7 @@ Serie 2026111108. El PL es el de la Z1.4.7 (los mismos `.bit`, `FPGA_PATCH` = 7:
 - **Arrancada desde la SD, la vista del servidor también busca.** Ahí `ota_tecla` solo atiende la A (grabar la ranura A con el `BOOT.bin` de la TF1), y la vista se quedaba en «Pulsa U para buscar» sin hacer nada. La página de la actualización sigue igual (en SD, U, I y B no hacen nada allí).
 - **El perfil 1 se llama «Normal»** («Standard» en inglés): en la lista de Perfiles salía como «BOOT.bin», y en los avisos como «perfil 1». El id interno y la etiqueta `[P:1]` de las ROM no cambian.
 - Banco `perfil_ota_host`: tres casos nuevos (B y U a mitad de la búsqueda con cable y con la S3, y la vista del servidor arrancando desde SD), que fallan con el programa de la Z1.4.7. Siguen bien `ota_host`, `mxpf_host` y `tf2_host`.
-- **Sin probar en placa.** Registro en `archivo/release/z1.4.8b/`.
+- Salió como beta sin probar en placa; va dentro de la Z1.4.9.
 
 ## Z1.4.7 — 11/11/2026 · beta (canal beta de la red) · El V9990 con los arreglos de openMSX de noviembre
 
@@ -54,7 +54,7 @@ Serie 2026111107; Ajustes enseña «Z1.4.7» (`FPGA_PATCH` = 7) y los cuatro per
 - **Sin probar en placa.** Para probar: demos y juegos del V9990 (Gfx9000) que dibujen con LINE o con órdenes encadenadas, el escritorio del V9990 y quitar y poner teclados y memorias USB.
 ## Z1.4.6 — 10/11/2026 · beta (canal beta de la red) · Space Manbow sin rayitas y lo que quedaba del V9968 de HRA!
 
-Serie 2026111006; Ajustes enseña «Z1.4.6» (`FPGA_PATCH` = 6) y los cuatro perfiles se recompilan con ella (F12 → P → S tras actualizar). **Probada en placa el 10/11**: *Space Manbow* ya no saca rayitas junto a los sprites. Rama `feature/hra-r23-lmcm`; registro en `archivo/release/z1.4.6b/`.
+Serie 2026111006; Ajustes enseña «Z1.4.6» (`FPGA_PATCH` = 6) y los cuatro perfiles se recompilan con ella (F12 → P → S tras actualizar). **Probada en placa el 10/11**: *Space Manbow* ya no saca rayitas junto a los sprites.
 
 - **Las rayitas de *Space Manbow*** (ruido de una línea alrededor de la nave y de los enemigos, visto en placa el 10/11 y presente desde al menos la Z1.2.6): el motor de sprites del V9968 lee el dato 14-15 ciclos después de pedirlo, sin esperar, y la VRAM de la Zynq está en la DDR detrás de una caché (el *shim*). En el SCREEN 4 de Konami las tablas de sprites (C800h, F000-FFFFh) caían en las mismas entradas de la caché que las del fondo (0000-3FFFh), el fondo las desalojaba en cada línea y la lectura del sprite iba a la DDR y llegaba tarde: el sprite se pintaba una línea con la X, el color o el patrón de otro. Arreglo: una **caché solo de sprites** de 8 KB en el shim (`v9968_vram_shim.v`, bloque _M1, parámetro `SPC`), que el fondo no puede desalojar y que se sirve en el mismo ciclo que la caché grande. Encontrado con un banco nuevo, `tb_manbow.sv`, que mete en el VDP la VRAM y las interrupciones reales del juego sacadas de openMSX (`manbow_cuadro.tcl`): con VRAM perfecta el cuadro sale idéntico al de openMSX; por el shim, 188 píxeles en rayas; con la caché de sprites, 0 lecturas de sprite equivocadas desde el segundo cuadro. Solo en la Zynq (el Tang usa el mismo shim con `SPC = 0`).
 

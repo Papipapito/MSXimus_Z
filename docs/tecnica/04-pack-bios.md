@@ -2,6 +2,8 @@
 
 Qué es el fichero de 512 KB que el PS deja en la DDR3 en 0x10F00000 antes de soltar el MSX, qué ROMs lleva y en qué orden, cómo se construye, por qué caminos llega a la placa y por qué en esta línea la configuración ya no viaja con él. Sale de `bios/` (`build.sh`, `tools/hacer_packs.py`, `tools/desmontar_pack.py` y el fuente del menú en `src/`), de `fpga/zynq/arm/boot/make_boot.sh` y de `fpga/zynq/tools/boot.tcl` y `packswap.tcl`.
 
+> **`bios/` no se publica** (sus fuentes van ligados a ROM con copyright), ni la carpeta `files/` de las entregas. El capítulo cuenta cómo está hecho el pack; la sección 4 no se reproduce desde un clon público. Quien quiera un `BOOT.bin` propio saca el pack de uno publicado: capítulo [07](07-construccion.md), sección 5.
+
 ## 1. Qué es
 
 Una **concatenación pura** de ROMs, sin cabecera ni índice, en diez ventanas fijas. El core sabe qué hay en cada desplazamiento porque está cableado en el RTL común (`fpga/top.v`): el banco D de la ventana de memoria del Z80 es el pack, y cada región es exactamente el pack más su base ([capítulo 03](03-mapas-memoria.md)).
@@ -78,7 +80,7 @@ Los dos bancos de la página 2 llevan guardas (`ds #A000-$` y `ds #C000-$`) que 
 
 El fuente es único y lleva en `menu_main.asm` una bandera `MSXIMUS` (1 o 0) heredada de cuando servía a dos máquinas; el resto son bloques `IF MSXIMUS`, y `build.sh` la fija reescribiendo esa línea en una copia temporal. El MSXimus Z se ensambla siempre con `MSXIMUS=1`, tal cual; **no hay una bandera de línea en el fuente**. Lo que es distinto se descubre en tiempo de ejecución:
 
-- **El puerto 2Fh** devuelve la versión del core. Con el nibble alto por debajo de A el menú la imprime como "M.m"; con A o más es la línea Zynq y la imprime como "Zn.m" (`ver_pnib`, en `e7_rutinas.asm`: 'Z' + (alto - 9) + '.' + bajo). La línea Zynq devuelve A2h y la línea "Version FPGA" de Ajustes muestra Z1.2; el tercer dígito sale del puerto 29h ([capítulo 02](02-puertos-es.md)). Esa misma comparación (`MIX_ZQ`) es la que añade la fila WaveGame en la página del mezclador.
+- **El puerto 2Fh** devuelve la versión del core. Con el nibble alto por debajo de A el menú la imprime como "M.m"; con A o más es la línea Zynq y la imprime como "Zn.m" (`ver_pnib`, en `e7_rutinas.asm`: 'Z' + (alto - 9) + '.' + bajo). La línea Zynq devuelve A4h (Z1.4) y el tercer dígito sale del puerto 29h; desde la Z1.4.9 el companion cambia esas dos lecturas del pack por la versión del sistema, que es lo que enseña la línea "Version FPGA" de Ajustes ([capítulo 02](02-puertos-es.md)). Esa misma comparación (`MIX_ZQ`) es la que añade la fila WaveGame en la página del mezclador.
 - **La sonda del mezclador**: con el dispositivo goauld seleccionado (`OUT #40,#48`), `OUT #44,#F0` seguido de `IN #44`; si los bits 6..4 devuelven 7 (`MIX_HAS`), el core lleva mezclador por fuente y la página "Mezclador de audio" ofrece los siete canales; si no, sólo la ganancia maestra. La sonda selecciona con el bit 7 y arrastra los tres bits bajos de la ganancia leída, para que en un core sin mezclador —donde cualquier `OUT #44` es la ganancia— no le cambie el volumen por el camino.
 - **El puerto 93h**: al lanzar una ROM, `wg_launch_msg` manda 'W', 'G', el LBA de la partición y los clusters de la carpeta y del fichero, para que el companion encuentre los `NN.wav` del WaveGame. En un core sin el anillo Z80→ARM es un `OUT` que nadie escucha.
 
@@ -116,7 +118,7 @@ El driver de la SD se compila aparte, con `make` en `nextor214/` y en `nextor3/`
 [load=0x00E10000] ota_info.bin       quien es esta imagen para la actualizacion por red
 ```
 
-El `zeros.bin` lo fabrica el propio script (64 KB). El FSBL carga todas las particiones y después salta al companion, que arranca la tarjeta de TF2 y pone `MSX_RUN` a 1. Por defecto el pack es el de Nextor 2.1.4 de `packs/zynq/msximus/` del repositorio privado de BIOS; para Nextor 3 se pasa el de `nextor-3.0.0-beta2/`. La ROM de ondas se copia a este directorio para el `.bif`.
+El `zeros.bin` lo fabrica el propio script (64 KB). El FSBL carga todas las particiones y después salta al companion, que arranca la tarjeta de TF2 y pone `MSX_RUN` a 1. Por defecto el pack es el de Nextor 2.1.4 de `packs/zynq/msximus/` del repositorio privado de BIOS; para Nextor 3 se pasa el de Nextor 3.0. La ROM de ondas se copia a este directorio para el `.bif`.
 
 El BOOT.bin resultante se graba en la QSPI desde `fpga/zynq/` con
 
@@ -161,7 +163,7 @@ La consecuencia práctica es la que motivó quitar la cola del pack: grabar un p
 ## 7. Lo que no va en el pack
 
 - **La tabla de ondas del OPL4** (`yrw801.rom`, 2 MB, en `packs/zynq/roms/` del repositorio privado de BIOS): partición aparte del BOOT.bin en 0x0F000000, o `boot.tcl` (`WAVE_ROM=fichero` para otra ROM, `WAVE_ROM=none` para no cargarla).
-- **El contenido de la tarjeta de TF2**: `NEXTOR.SYS`, `COMMAND`, utilidades, herramientas del WiFi y del File-Hunter. Lo trae [MSX SD Maker](https://github.com/Papipapito/SD_Maker) (`base/`, `nextor-2.1.4/` y `nextor-3.0.0-beta2/`); [capítulo 03 del manual](../manual/03-tarjeta-sd.md).
+- **El contenido de la tarjeta de TF2**: `NEXTOR.SYS`, `COMMAND`, utilidades, herramientas del WiFi y del File-Hunter. Lo trae [MSX SD Maker](https://github.com/Papipapito/SD_Maker) (`base/`, `nextor-2.1.4/` y `nextor-3.0.0/`); [capítulo 03 del manual](../manual/03-tarjeta-sd.md).
 - **La configuración** (sección 6) y **el companion**, que es una partición del BOOT.bin o un `.elf` que `boot.tcl` descarga por JTAG.
 
 ## 8. Un pack para el core

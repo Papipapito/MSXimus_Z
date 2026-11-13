@@ -4,6 +4,8 @@ El perfil **Dual** (`build.tcl … bit dual`, capítulo [07](07-construccion.md)
 
 *(Hubo una primera versión del perfil sin el V9990, en la que B usaba el lector del V9990 para ocupar la pantalla entera; no llegó a publicarse; sus cifras: LUT 41.930, BRAM 108, WNS +0,719 ns. El autor pidió el cambio de plan —V9990 dentro, OPL4 fuera— el 31/10/2026.)*
 
+![El perfil Dual en la HDMI: un juego en la máquina A y MSX BASIC en la B](../img/z_perfil_dual.png)
+
 ## 1. Qué cambia respecto al estándar
 
 | | Estándar | Dual |

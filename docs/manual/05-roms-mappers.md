@@ -100,10 +100,11 @@ El MSXimus Z lo emula en el **slot 1**, el único libre durante el juego (0 = BI
 - `FHUNT\GM2.ROM`: la ROM del cartucho, 128 KB. La pone el usuario, por lo mismo que las ROMs de los juegos.
 - `FHUNT\GM2.SRM`: sus 8 KB de SRAM. Los crea el menú la primera vez, a FF.
 
-Y activarlo, de dos maneras:
+Y activarlo:
 
-- **Para todos los lanzamientos**: en Ajustes, **Slot 1 = Game Master 2**, y Save & Restart (se guarda en la QSPI).
-- **Para uno**: en la pantalla de lanzar, tecla **G**. Solo aparece con mappers Konami y Konami-SCC, que son los que lo usan. Por defecto toma el valor de Ajustes, y es útil en las dos direcciones: para quitarlo en un juego que no es Konami pero usa el mapper Konami-SCC, como Space Manbow 2, que con el Game Master 2 activo no arranca; o para ponerlo una vez sin cambiar el ajuste.
+- En Ajustes, **Slot 1 = Game Master 2**, y Save & Restart (se guarda en la QSPI). Vale para todos los lanzamientos.
+- Con ese ajuste puesto, la pantalla de lanzar enseña la fila **GM2: On** en los mappers Konami y Konami-SCC, y la tecla **G** lo quita para ese lanzamiento. Sirve para un juego que no es Konami pero usa el mapper Konami-SCC, como Space Manbow 2, que con el Game Master 2 activo no arranca.
+- Sin ese ajuste no sale ni la fila ni la tecla (desde la Z1.4.9; antes se podía poner para un solo lanzamiento).
 
 Por dentro, la ROM y la SRAM del Game Master 2 van a la **mitad alta de la megaram** (segmentos 480 a 495 la ROM, 496 la SRAM, 497 su descriptor), que solo tocan los juegos de 4 MB. El menú las carga con la misma rutina que la SRAM del apartado 4, arma el cartucho con un bit volátil del puerto #46 y el core mapea esos segmentos en el slot 1 con el mapper del GM2 (página 0 fija en 4000h, registros en 6000h, 8000h y A000h, SRAM en la ventana de A000h y escritura solo por B000h, como el original y como en openMSX). El core borra el bit de armado en cada reset, para que el escaneo de slots de la BIOS no se encuentre un cartucho en el slot 1 al volver al menú.
 
