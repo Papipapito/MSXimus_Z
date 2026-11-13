@@ -4,6 +4,7 @@
 #include "xil_types.h"
 
 void ota_arranque(void);          /* al principio de main (MSX aun en reset): prueba de la ranura B / avisos */
+void ota_menu_version(void);      /* antes de soltar el MSX (y del perfil de arranque): Ajustes dira la version de ota_info, no la del PL */
 void ota_poll(void);              /* bucle principal: descarga, grabacion, confirmacion de la B */
 void ota_tecla(u8 usage);         /* teclas HID con el OSD abierto: U buscar, I instalar, R reiniciar, F fabrica */
 void ota_reinicia_ps(void);       /* reinicio del PS en la misma ranura (profile.c, tras un PCAP fallido); solo vuelve si no puede */
@@ -18,6 +19,7 @@ enum { OSV_SIN_BUSCAR = 0, OSV_BUSCANDO, OSV_LISTO, OSV_ERROR, OSV_OCUPADO };   
 int  ota_srv_estado(void);                  /* OSV_*: LISTO = hay un manifiesto leido y con la firma buena */
 const char *ota_srv_texto(void);            /* el servidor ("msx.barcelona", "192.168.1.5 (PC)") o el error */
 int  ota_srv_beta(void);                    /* 1 = canal beta */
+int  ota_busca(int como);                   /* 0 U/R buscar, 1 B otro canal, 2 al abrir la vista; corta la busqueda en marcha; tambien arrancada desde SD */
 int  ota_perfiles_n(void);                  /* los del manifiesto (0 si no hay manifiesto leido) */
 const ota_perfil_t *ota_perfil(int i);
 int  ota_perfil_estado(int i);              /* OPS_*: mira mxpf_estado(), la lista de la ultima vez que se leyo la tarjeta */

@@ -140,7 +140,7 @@ void perfiles_abre_servidor(void)
 {
     perfiles_abre();
     vista = V_SERVIDOR;
-    if (ota_srv_estado() == OSV_SIN_BUSCAR) ota_tecla(0x18);
+    if (ota_srv_estado() == OSV_SIN_BUSCAR) (void)ota_busca(2);
     else if (ota_srv_estado() == OSV_LISTO) refresca();
 }
 
@@ -205,7 +205,7 @@ static void ejecuta(void)
             net_ip(ip);
             if (ip[0] && !ota_ocupada()) {                    /* con cable: busca y baja los perfiles solo (se ve en la vista del servidor) */
                 auto_bajar = 1; vista = V_SERVIDOR; ssel = 0;
-                ota_perfil_olvida(); ota_tecla(0x18);
+                ota_perfil_olvida(); (void)ota_busca(0);
             }
         }
     } else if (que == A_PERFIL1) {
@@ -239,7 +239,7 @@ static void fija_arranque(void)
     if (sel == 0 || sel > n_perfiles()) {
         if (!cfg_perfil_fija(0)) { pon(T("No se pudo guardar el ajuste", "The setting could not be saved"), 0); return; }
         boot_id[0] = 0;
-        pon(T("Al encender: el perfil 1", "At power-on: profile 1"), 1);
+        pon(T("Al encender: Normal", "At power-on: Standard"), 1);
         return;
     }
     if (!cfg_perfil_fija(in->p[sel - 1].id)) { pon(T("No se pudo guardar el ajuste", "The setting could not be saved"), 0); return; }
@@ -287,10 +287,10 @@ static void tecla_servidor(u8 u)
         case 0x04:                                             /* A: todos los que falten o esten viejos */
             if (n && !ota_perfil_en_curso()) { ota_perfil_olvida(); (void)ota_perfil_baja(-1); }
             break;
-        case 0x18: case 0x15:                                  /* U o R: buscar otra vez */
-            ota_perfil_olvida(); (void)mxpf_monta(); ota_tecla(0x18); ssel = 0;
+        case 0x18: case 0x15:                                  /* U o R: buscar otra vez (corta la que este en marcha, 11/11/2026) */
+            ota_perfil_olvida(); (void)mxpf_monta(); (void)ota_busca(0); ssel = 0;
             break;
-        case 0x05: ota_perfil_olvida(); ota_tecla(0x05); ssel = 0; break;   /* B: el otro canal, y busca */
+        case 0x05: ota_perfil_olvida(); (void)ota_busca(1); ssel = 0; break;   /* B: el otro canal, y busca (aunque estuviera buscando) */
         case 0x17: tecla_preparar(); break;
         case 0x16: case 0x29: vista = V_TARJETA; ota_perfil_olvida(); refresca(); break;   /* S o ESC: la tarjeta */
         default: break;
@@ -314,7 +314,7 @@ void perfiles_tecla(u8 u)
         case 0x51: if (sel < n) sel++; break;                  /* abajo */
         case 0x28:                                             /* Intro */
             if (sel == 0) {
-                if (mxpf_activo() == MXA_PERFIL1) pon(T("Ya corre el perfil 1", "Profile 1 is already running"), 1);
+                if (mxpf_activo() == MXA_PERFIL1) pon(T("Ya corre el Normal", "Standard is already running"), 1);
                 else arma(A_PERFIL1);
             } else carga_elegido();
             break;
@@ -391,7 +391,7 @@ static void tarjeta(osd_pag p, const mxpf_info_t *in)
     if (in->estado == MXS_SIN_TARJETA) {
         osd_car(p, 2, 4, OSD_A(PF, C_NARANJA), G_SD);
         osd_txt(p, 4, 4, OSD_A(PF, C_NARANJA), T("sin tarjeta", "no card"));
-        osd_txt(p, 2, 5, OSD_A(PF, C_GRIS), T("Solo existe el perfil 1.", "Only profile 1 exists."));
+        osd_txt(p, 2, 5, OSD_A(PF, C_GRIS), T("Solo existe el Normal.", "Only Standard exists."));
         return;
     }
     if (in->estado == MXS_ERROR_TARJETA) {
@@ -472,7 +472,7 @@ static void lista(osd_pag p, const mxpf_info_t *in, int n)
         osd_num(b, (u32)i + 1U);
         osd_txt(p, 3, y, OSD_A(PF, tinta), b);
         if (i == 0) {
-            osd_txt(p, 5, y, OSD_A(PF, tinta), "BOOT.bin");
+            osd_txt(p, 5, y, OSD_A(PF, tinta), T("Normal", "Standard"));   /* el del BOOT.bin (11/11/2026: antes ponia "BOOT.bin") */
             osd_txt_n(p, 14, y, OSD_A(PF, tinta), ota_version(), 9);
             es_act = mxpf_activo() == MXA_PERFIL1;
         } else {
@@ -528,7 +528,7 @@ static void aviso_armado(osd_pag p, const mxpf_info_t *in, int n, int y)
                                                     "The partition directories are rebuilt: the profile list is lost."));
     } else if (armado == A_PERFIL1) {
         osd_car(p, 1, y, OSD_A(PF, C_NARANJA), G_AVISO);
-        (void)parrafo(p, 3, y, 26, 3, C_NARANJA, T("La placa se reinicia y vuelve el perfil 1.", "The board restarts and profile 1 comes back."));
+        (void)parrafo(p, 3, y, 26, 3, C_NARANJA, T("La placa se reinicia y vuelve el Normal.", "The board restarts and Standard comes back."));
     }
 }
 
@@ -552,8 +552,8 @@ static void aviso(osd_pag p, const mxpf_info_t *in, int n)
     } else if (boot_id[0] && arranque_estado(in) != 1) {         /* el perfil al arrancar no se podra cargar */
         osd_car(p, 1, y, OSD_A(PF, C_NARANJA), G_AVISO);
         (void)parrafo(p, 3, y, 26, 3, C_NARANJA, arranque_estado(in) == 2
-                      ? T("El perfil de arranque es de otra serie: arrancará el 1.", "The boot profile is for another series: profile 1 starts.")
-                      : T("El perfil de arranque no está instalado: arrancará el 1.", "The boot profile is not installed: profile 1 starts."));
+                      ? T("El perfil de arranque es de otra serie: arrancará el Normal.", "The boot profile is for another series: Standard starts.")
+                      : T("El perfil de arranque no está instalado: arrancará el Normal.", "The boot profile is not installed: Standard starts."));
     } else {
         for (i = 0; i < in->n && in->estado == MXS_OK; i++) if (serie != 0U && in->p[i].serie != serie) viejos++;
         if (viejos) {                                            /* tras una actualizacion del sistema */
@@ -581,11 +581,11 @@ static void pagina_tarjeta(osd_pag p)
     } else if (mxpf_activo() == MXA_OTRO) {
         osd_txt(p, 2, 10, OSD_A(PF, C_AMARILLO), T("otro (prueba por la DDR)", "other (DDR test)"));
     } else {
-        x = osd_txt(p, 2, 10, OSD_A(PF, C_AMARILLO), "1 · BOOT.bin ");
+        x = osd_txt(p, 2, 10, OSD_A(PF, C_AMARILLO), T("1 · Normal ", "1 · Standard "));
         osd_txt(p, x, 10, OSD_A(PF, C_BLANCO), ota_version());
     }
     x = osd_txt(p, 2, 11, OSD_A(PF, C_GRIS), T("Al encender: ", "At power-on: "));
-    if (!boot_id[0]) osd_txt(p, x, 11, OSD_A(PF, C_GRIS_CL), T("perfil 1", "profile 1"));
+    if (!boot_id[0]) osd_txt(p, x, 11, OSD_A(PF, C_GRIS_CL), T("Normal", "Standard"));
     else {
         int e = arranque_estado(in);
         x = osd_txt(p, x, 11, OSD_A(PF, e == 1 ? C_AMARILLO : C_NARANJA), perfil_nombre(boot_id));
@@ -609,7 +609,7 @@ static void pagina_tarjeta(osd_pag p)
         } else if (puede_borrar() && cl.clase == MXC_AJENA) {
             (void)osd_boton(p, x, 24, PF, C_ROJO, "B", T("Borrar y preparar", "Erase and set up"));
         } else if (sel == 0 && mxpf_activo() != MXA_PERFIL1) {
-            (void)osd_boton(p, x, 24, PF, C_AMARILLO, T("Intro", "Enter"), T("Perfil 1", "Profile 1"));
+            (void)osd_boton(p, x, 24, PF, C_AMARILLO, T("Intro", "Enter"), T("Normal", "Standard"));
         }
         x = osd_boton(p, 1, 25, PF, C_AMARILLO, "A", T("Inicio", "Boot"));
         (void)osd_boton(p, x, 25, PF, C_AMARILLO, "S", T("Servidor", "Server"));

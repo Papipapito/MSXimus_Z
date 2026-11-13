@@ -1,0 +1,60 @@
+From bcf4b32623a20f691160291bbce104b0b48cb47e Mon Sep 17 00:00:00 2001
+From: HiFiPhile <admin@hifiphile.com>
+Date: Tue, 13 Oct 2026 22:25:17 +0200
+Subject: [PATCH 1/2] hid host: invoke tuh_hid_umount_cb() only for a mounted
+ interface
+
+hidh_close() called tuh_hid_umount_cb() for every interface of the device,
+including one whose set_config never finished and that never got
+tuh_hid_mount_cb(). Check the interface's mounted flag first, as msc_host
+does for its unmount callback.
+---
+ src/class/hid/hid_host.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/class/hid/hid_host.c b/src/class/hid/hid_host.c
+index ca3654acb..eadb70381 100644
+--- a/src/class/hid/hid_host.c
++++ b/src/class/hid/hid_host.c
+@@ -471,7 +471,9 @@ void hidh_close(uint8_t daddr) {
+     hidh_interface_t* p_hid = &_hidh_itf[i];
+     if (p_hid->daddr == daddr) {
+       TU_LOG_DRV("  HIDh close addr = %u index = %u\r\n", daddr, i);
+-      tuh_hid_umount_cb(daddr, i);
++      if (p_hid->mounted) {
++        tuh_hid_umount_cb(daddr, i); // only an interface the application got tuh_hid_mount_cb() for
++      }
+       tu_memclr(p_hid, sizeof(hidh_interface_t));
+     }
+   }
+-- 
+2.55.0.windows.2
+
+
+From c1d4f596f7f1772b764c8a12d99c21648d38b152 Mon Sep 17 00:00:00 2001
+From: Javid Khan <dxbjavid@gmail.com>
+Date: Wed, 14 Oct 2026 16:25:34 +0530
+Subject: [PATCH 2/2] clamp msc host max_lun to the capacity array size
+
+---
+ src/class/msc/msc_host.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/class/msc/msc_host.c b/src/class/msc/msc_host.c
+index 8afd70705..51bbca32f 100644
+--- a/src/class/msc/msc_host.c
++++ b/src/class/msc/msc_host.c
+@@ -430,7 +430,9 @@ static void config_get_maxlun_complete(tuh_xfer_t* xfer) {
+   // MAXLUN's response is minus 1 by specs, STALL means 1
+   if (XFER_RESULT_SUCCESS == xfer->result) {
+     uint8_t* enum_buf = usbh_get_enum_buf();
+-    p_msc->max_lun = enum_buf[0] + 1;
++    // enum_buf[0] is device-controlled; clamp the LUN count to the capacity[] storage (and widen the
++    // +1) so it can't exceed CFG_TUH_MSC_MAXLUN in the per-LUN getters, nor wrap to 0 at 0xFF.
++    p_msc->max_lun = (uint8_t) tu_min32((uint32_t) enum_buf[0] + 1u, CFG_TUH_MSC_MAXLUN);
+   } else {
+     p_msc->max_lun = 1;
+   }
+-- 
+2.55.0.windows.2
+

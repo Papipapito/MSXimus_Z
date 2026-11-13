@@ -269,6 +269,7 @@ module vdp_cpu_interface (
 	wire				w_line_interrupt;
 	wire				w_frame_interrupt;
 	wire				w_command_end_interrupt;
+	wire				w_status_sprite_overmap;	//	MSXimus (HRA! c71bc9d, v0.98): S#0 bit6 = 5S AND NOT F
 
 	reg		[1:0]		ff_button1 = 2'd0;
 	reg		[1:0]		ff_button2 = 2'd0;
@@ -900,9 +901,16 @@ module vdp_cpu_interface (
 	//	Read data latch
 	// --------------------------------------------------------------------
 
+	//	MSXimus (HRA! c71bc9d, v0.98, 10/11/2026): con F = 1 el bit 6 de S#0 (5S) se lee a 0. El 5S que se arma
+	//	durante la imagen no lo ve la rutina de la interrupcion de VSYNC (Dragon Quest II la usaba para
+	//	esconder el logo de la portada). openMSX llega a lo mismo (solo arma el 5S con F = 0, "Dragon Quest 2
+	//	needs this"); OCM-PLD lo hace solo en sprites modo 2 (ZANAC A.I.); HRA! en todos los modos, como aqui.
+	//	Leer S#0 sigue borrando el 5S como antes; el numero (_187d) no cambia.
+	assign w_status_sprite_overmap	= sprite_overmap & ~ff_frame_interrupt;
+
 	always @( posedge clk ) begin
 		case( ff_status_register_pointer )
-		4'd0:		ff_status_register <= { ff_frame_interrupt, sprite_overmap, sprite_collision, sprite_overmap_id };
+		4'd0:		ff_status_register <= { ff_frame_interrupt, w_status_sprite_overmap, sprite_collision, sprite_overmap_id };
 		4'd1:		ff_status_register <= { 2'd0, ff_v9958_mode ? c_v9958id: c_v9968id, ff_line_interrupt };
 		4'd2:		ff_status_register <= { status_transfer_ready, status_vsync, status_hsync, status_border_detect, 2'b11, status_field, status_command_execute };
 		4'd3:		ff_status_register <= sprite_collision_x[7:0];

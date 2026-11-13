@@ -531,7 +531,7 @@ module msx_b #(
     wire        v68bk2_req, v68bk2_done_t;
     wire [21:0] v68bk2_addr;
     wire [15:0] v68bk2_rword;
-    v9968_vram_shim #(.VRAM_BASE(VRAM_OFF)) u_shim (
+    v9968_vram_shim #(.VRAM_BASE(VRAM_OFF), .SPC(1)) u_shim (     // SPC: cache de sprites aparte (como la maquina A)
         .clk_vdp(clk_86), .rst_n(rst86_n),
         .vram_address(v68_vram_address), .vram_write(v68_vram_write),
         .vram_valid(v68_vram_valid), .vram_wdata(v68_vram_wdata),

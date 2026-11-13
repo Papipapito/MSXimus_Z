@@ -255,6 +255,13 @@ wire srch_edge_right = work.srch.edge_left;
     // BD16 (t9990_bitmap); REG.FC tal cual ({R#49, R#48}) lo dejaba en la impar en LMMV/PSET/LINE y SRCH
     // comparaba con los bytes cruzados. A 2/4/8 bpp se queda como estaba (el manual pide R#48 = R#49)
     wire [15:0] fc_fifo = (DST_CLRM == T9990_REG::CLRM_16BPP) ? {REG.FC[7:0], REG.FC[15:8]} : REG.FC;
+    // MSXimus Z: en P1 el LMMV pinta con FC[7:0] en las dos capas (medido en un V9990 real, openMSX
+    // executeLMMV); con FC tal cual R#49 se colaba en la mitad de los pixeles. Se pone al sacar la palabra del
+    // FIFO (STATE_SRC_DEQUEUE_DONE), ya alineada con el destino: el nibble de cada posicion de la palabra es el
+    // alto de R#48 en los pixeles pares y el bajo en los impares, como en p1Write. Antes, en el FIFO, el patron
+    // dependia de por donde empezara el flujo (DX impar, NX impar)
+    wire p1_lmmv = P1 && REG.OP == T9990_REG::CMD_LMMV;
+    wire [31:0] fc_p1 = {REG.FC[7:0], REG.FC[7:0], REG.FC[7:0], REG.FC[7:0]};
 
     wire [4:0] SRC_OUT_COUNT = SRC_COUNT;
     wire [4:0] SRC_POS_COUNT = SRC_COUNT;
@@ -382,6 +389,102 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
     wire cond_dst_is_xy = (REG.OP == T9990_REG::CMD_LMMC) || (REG.OP == T9990_REG::CMD_LMMV) || (REG.OP == T9990_REG::CMD_LMMM) || (REG.OP == T9990_REG::CMD_LINE) || (REG.OP == T9990_REG::CMD_PSET) || (REG.OP == T9990_REG::CMD_CMMC) || (REG.OP == T9990_REG::CMD_CMMK) || (REG.OP == T9990_REG::CMD_CMMM) || (REG.OP == T9990_REG::CMD_BMXL);
     wire cond_dst_is_linear = (REG.OP == T9990_REG::CMD_BMLX || REG.OP == T9990_REG::CMD_BMLL);
 
+    // MSXimus Z: el FSM de abajo solo avanza en un ciclo con CLK_EN y sin un STOP entrante; los pulsos de BD/BX
+    // y de la escritura de vuelta se derivan de su estado con esa misma condicion
+    wire fsm_run = CLK_EN && !(START && REG.OP == T9990_REG::CMD_STOP);
+
+`ifdef ENABLE_SRCH
+    // BD / BX (openMSX executeSRCH/endSRCH, medido en un V9990 real): viven aparte del FSM para que una escritura
+    // de FC (R#48/R#49) pueda borrar BD en cualquier estado ("once a SRCH sets BD, it stays set through other
+    // commands until FC is written"). SRCH sin hallar el color: BD = 0 y BX = un punto pasado el borde (el ancho de
+    // la imagen & 7FFh a la derecha, 7FFh a la izquierda); hallado: BD = 1 y BX = X
+    wire srch_start   = fsm_run && state == STATE_SEARCH;
+    wire srch_found   = fsm_run && state == STATE_SEARCH_CHECK && REG.NEQ == work.srch.clr_neq;
+    wire srch_nofound = fsm_run && state == STATE_SEARCH_NEXT && (REG.DIX ? work.srch.edge_left : work.srch.edge_right);
+    wire [10:0] srch_bx_edge = REG.DIX ? 11'h7FF :
+                               (XIMM == T9990_REG::XIMM_256)  ? 11'h100 :
+                               (XIMM == T9990_REG::XIMM_512)  ? 11'h200 :
+                               (XIMM == T9990_REG::XIMM_1024) ? 11'h400 : 11'h000;   // 2048 & 7FFh
+    always_ff @(posedge CLK or negedge RESET_n) begin
+        if(!RESET_n) begin
+            STATUS.BD <= 0;
+            STATUS.BX <= 0;
+        end
+        else if(srch_found) begin
+            STATUS.BD <= 1;
+            STATUS.BX <= SRC_X[10:0];
+        end
+        else if(srch_nofound) begin
+            STATUS.BD <= 0;
+            STATUS.BX <= srch_bx_edge;
+        end
+        else if(srch_start || REG.FC_WR) begin
+            STATUS.BD <= 0;
+        end
+    end
+`endif
+
+    // Escritura de vuelta a R#34/35 (SY) y R#38/39 (DY) al acabar la orden (openMSX V9990CmdEngine: sus registros
+    // son los contadores del motor y un programa los ve al lanzar la orden siguiente sin reescribirlos). Los
+    // valores salen de las coordenadas del motor, que ya llevan los pasos de DIY por fila: SRC_Y / DST_Y.
+    // Se registra y sale como pulso de 1 ciclo por STATUS (el puerto lo aplica; si la CPU escribe el mismo
+    // registro en ese ciclo, gana la CPU).
+    // ToDo (fase B2, solo el openMSX actual, no las versiones viejas): aqui irian NY = FFFh al acabar un
+    // rectangulo (NY - 1 en POINT/PSET/ADVN/SRCH/STOP), SX = 0 (LMMC, LMMV, CMMC, LINE, PSET, ADVN) / DX = 0
+    // (LMCM, POINT, SRCH) y que R#53/54 (BX) lean SX en vez de STATUS.BX
+    wire wb_fire = fsm_run && state == STATE_COMPLETE && !is_line && !is_srch;
+    reg         wb_sy_en;
+    reg         wb_dy_en;
+    reg  [11:0] wb_sy;
+    reg  [11:0] wb_dy;
+    always_comb begin
+        wb_sy_en = 0;
+        wb_dy_en = 0;
+        wb_sy = SRC_Y;
+        wb_dy = DST_Y;
+        case (REG.OP)
+            T9990_REG::CMD_LMMC,
+            T9990_REG::CMD_CMMC,
+            T9990_REG::CMD_CMMK,
+            T9990_REG::CMD_CMMM,
+            T9990_REG::CMD_BMXL,
+            T9990_REG::CMD_LINE:    wb_dy_en = 1;                       // DY avanza por fila (LINE: por cada paso del eje que sea)
+            T9990_REG::CMD_LMMV,
+            T9990_REG::CMD_LMMM:    begin wb_sy_en = 1; wb_dy_en = 1; end
+            T9990_REG::CMD_LMCM,
+            T9990_REG::CMD_BMLX,
+            T9990_REG::CMD_POINT:   wb_sy_en = 1;                       // POINT: SY + 1 (o - 1 con DIY)
+            T9990_REG::CMD_BMLL: begin                                  // SY:SX y DY:DX son direcciones: sube NY filas de 256 bytes
+                wb_sy_en = 1;
+                wb_dy_en = 1;
+                wb_sy = REG.SY + REG.NY;
+                wb_dy = REG.DY + REG.NY;
+            end
+            T9990_REG::CMD_PSET,
+            T9990_REG::CMD_ADVN: begin                                  // AYE (R#52 bit 2): DY + 1, o - 1 con AYM (bit 3)
+                wb_dy_en = REG.AYE;
+                wb_dy = REG.AYM ? (REG.DY - 12'd1) : (REG.DY + 12'd1);
+            end
+            default: ;
+        endcase
+    end
+    always_ff @(posedge CLK or negedge RESET_n) begin
+        if(!RESET_n) begin
+            STATUS.WB_SY_WR <= 0;
+            STATUS.WB_DY_WR <= 0;
+            STATUS.WB_SY    <= 0;
+            STATUS.WB_DY    <= 0;
+        end
+        else begin
+            STATUS.WB_SY_WR <= wb_fire && wb_sy_en;
+            STATUS.WB_DY_WR <= wb_fire && wb_dy_en;
+            if(wb_fire) begin
+                STATUS.WB_SY <= wb_sy;
+                STATUS.WB_DY <= wb_dy;
+            end
+        end
+    end
+
     always_ff @(posedge CLK or negedge RESET_n) begin
         if(!RESET_n) begin
             P2_CPU_TO_VDP.REQ <= 0;
@@ -453,9 +556,9 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
                 end
                 else begin
                     // 転送ドット数
-                    SRC_NX <= REG.NX == 0 ? 12'd2048 : REG.NX;
+                    SRC_NX <= REG.NX == 0 ? 19'd4096 : REG.NX;     // NX = 0 son 4096 (openMSX getWrappedNX)
                     SRC_NY <= REG.NY;
-                    DST_NX <= REG.NX == 0 ? 12'd2048 : REG.NX;
+                    DST_NX <= REG.NX == 0 ? 19'd4096 : REG.NX;
                     DST_NY <= REG.NY;
                 end
 
@@ -899,7 +1002,7 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
                 // SRC_NY が 1->0 で転送元入力を禁止
                 if(SRC_NY == 1'd1) src_enable <= 0;
 
-                SRC_NX <= REG.NX == 0 ? 12'd2048 : REG.NX;
+                SRC_NX <= REG.NX == 0 ? 19'd4096 : REG.NX;
                 SRC_NY <= SRC_NY - 1'd1;
             end
             else begin
@@ -1024,6 +1127,7 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
                 // 左右反転せずに SRC_DATA へ格納
                 SRC_DATA <= DEQUEUE_DATA;
             end
+            if(p1_lmmv) SRC_DATA <= fc_p1;      // (gana a las dos ramas de arriba)
 
             state <= STATE_LOGOP;
         end
@@ -1190,7 +1294,7 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
                     end
                 end
                 else if(dst_nx_over) begin
-                    DST_NX <= REG.NX == 0 ? 12'd2048 : REG.NX;
+                    DST_NX <= REG.NX == 0 ? 19'd4096 : REG.NX;
                     DST_NY <= DST_NY - 1'd1;
 
                     // 終わり?
@@ -1235,7 +1339,7 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
 `endif
             begin
                 //
-                // ToDo:PSET と ADVANCE の座標更新
+                // PSET / ADVANCE: DY por AYE/AYM y el resto de registros finales, en wb_* de arriba
                 //
                 STATUS.CE <= 0;
                 STATUS.CE_intr <= 1;
@@ -1248,9 +1352,10 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
         // LINE
         //
         else if(state == STATE_LINE) begin
-            //
+            // openMSX startLINE (medido en un V9990 real): termino de error inicial max(MJ,2)/2 - 1 y MJ+1 puntos
+            // (MJ = 0 dibuja uno); cnt = puntos que quedan tras el actual
             work.line.cnt <= REG.MJ;
-            work.line.sum <= REG.MJ - 1'd1;
+            work.line.sum <= {1'b0, (REG.MJ < 12'd2 ? 12'd2 : REG.MJ) >> 1} - 1'd1;
             SRC_DIX <= 0;
             DST_DIX <= 0;
 
@@ -1269,13 +1374,9 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
             state <= STATE_LINE_CHECK;
         end
         else if(state == STATE_LINE_CHECK) begin
-            // 終わりチェック
-            work.line.cnt <= work.line.cnt - 1'd1;
-            if(work.line.cnt == 1'd1) begin
-                is_line <= 0;
-                state <= STATE_COMPLETE;
-            end
-            else if(work.line.sum[$bits(work.line.sum)-1]) begin
+            // sum - MI < 0 = sum < MI: paso en el eje menor. El final se mira en STATE_LINE_NEXT_MJ, despues de
+            // los pasos del ultimo punto (openMSX da el paso y luego mira si acaba; DY queda con ese paso)
+            if(work.line.sum[$bits(work.line.sum)-1]) begin
                 state <= STATE_LINE_NEXT_MI;
             end
             else begin
@@ -1303,15 +1404,24 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
                 DST_X <= REG.DIX ? (DST_X - 1'd1) : (DST_X + 1'd1);
             end
 
-            // PSET 実行
-            SRC_X <= DST_X;
-            SRC_Y <= DST_Y;
-            SRC_NX <= 1;
-            SRC_NY <= 1;
-            DST_NX <= 1;
-            DST_NY <= 1;
-            src_enable <= 1;
-            state <= STATE_SETUP;
+            if(work.line.cnt == 12'd0) begin
+                // era el ultimo punto
+                is_line <= 0;
+                state <= STATE_COMPLETE;
+            end
+            else begin
+                work.line.cnt <= work.line.cnt - 1'd1;
+
+                // PSET 実行
+                SRC_X <= DST_X;
+                SRC_Y <= DST_Y;
+                SRC_NX <= 1;
+                SRC_NY <= 1;
+                DST_NX <= 1;
+                DST_NY <= 1;
+                src_enable <= 1;
+                state <= STATE_SETUP;
+            end
         end
 `endif
 `ifdef ENABLE_SRCH
@@ -1319,8 +1429,7 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
         // SEARCH
         //
         else if(state == STATE_SEARCH) begin
-            // フラグクリア
-            STATUS.BD <= 0;
+            // フラグクリア: BD se borra en su always_ff (srch_start)
             SRC_DIX <= 0;
             DST_DIX <= 0;
 
@@ -1365,9 +1474,7 @@ localparam state_t STATE_DST_WRITE_CPU_WAIT_BUSY         = STATE_DST_WRITE_WAIT;
         else if(state == STATE_SEARCH_CHECK) begin
             // ピクセルデータチェック
             if(REG.NEQ == work.srch.clr_neq) begin
-                // 完了
-                STATUS.BD <= 1;
-                STATUS.BX <= SRC_X[10:0];
+                // 完了: BD = 1 y BX = SRC_X en su always_ff (srch_found)
                 is_srch <= 0;
                 state <= STATE_COMPLETE;
             end

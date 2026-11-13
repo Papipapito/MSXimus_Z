@@ -137,8 +137,8 @@ static void etiqueta(u32 part, u32 dir, u32 file)
     if (id[0] == '1' && !id[1]) {                             /* el perfil 1 es el del BOOT.bin: volver a el reinicia la placa entera */
         if (mxpf_id_activo()[0] == 0) return;
         msx_reset();
-        panel(T("Esta ROM pide el perfil 1: Intro en BOOT.bin lo recupera (reinicia la placa).",
-                "This ROM wants profile 1: Enter on BOOT.bin restores it (restarts the board)."), 0, 0);
+        panel(T("Esta ROM pide el perfil Normal: Intro sobre Normal lo recupera (reinicia la placa).",
+                "This ROM wants the Standard profile: Enter on Standard restores it (restarts the board)."), 0, 0);
         return;
     }
     r = mxpf_pide(id, &cargado);

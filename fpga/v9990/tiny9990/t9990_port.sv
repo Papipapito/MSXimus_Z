@@ -153,8 +153,15 @@ interface T9990_STATUS_IF;
     logic           HI;
     logic           VI;
     logic [10:0]    BX;
-    modport CPU ( input     TR, VR, HR, BD, EO, CE, CE_intr, HI, VI, BX  );
-    modport CMD ( output    TR, BD, CE, CE_intr, BX );
+    // MSXimus Z: escritura de vuelta del motor a R#34/35 (SY) y R#38/39 (DY) al acabar una orden (openMSX
+    // V9990CmdEngine, medido en un V9990 real); pulso de 1 ciclo con su valor. Si la CPU escribe ese registro
+    // en el mismo ciclo, gana la CPU
+    logic           WB_SY_WR;
+    logic [11:0]    WB_SY;
+    logic           WB_DY_WR;
+    logic [11:0]    WB_DY;
+    modport CPU ( input     TR, VR, HR, BD, EO, CE, CE_intr, HI, VI, BX, WB_SY_WR, WB_SY, WB_DY_WR, WB_DY  );
+    modport CMD ( output    TR, BD, CE, CE_intr, BX, WB_SY_WR, WB_SY, WB_DY_WR, WB_DY );
     modport TIM ( output    VR, HR, EO, HI, VI );
 endinterface
 
@@ -211,7 +218,7 @@ interface T9990_REGISTER_IF;
     logic [10:0]    DX;
     logic [11:0]    DY;
     logic [18:0]    DA;
-    logic [10:0]    NX;
+    logic [11:0]    NX;         // MSXimus Z: 12 bits como en openMSX (R#41 bit 3 cuenta; NX = 0 son 4096)
     logic [11:0]    NY;
     logic [11:0]    MJ;
     logic [11:0]    MI;
@@ -232,6 +239,7 @@ interface T9990_REGISTER_IF;
     logic           AXE;
     logic           SCAYL_WR;   // MSXimus Z 21/10/2026: pulso de 1 ciclo, la CPU ha escrito R#17 (SCAY bajo)
     logic           SCBYL_WR;   // MSXimus Z 21/10/2026: idem R#21 (SCBY bajo)
+    logic           FC_WR;      // MSXimus Z: pulso de 1 ciclo, la CPU ha escrito R#48 o R#49 (FC); borra BD (openMSX)
 
 
     modport CPU ( output    SRS,    MCS,
@@ -257,7 +265,7 @@ interface T9990_REGISTER_IF;
                             WM,
                             FC,     BC,
                             OP,     AYM,    AYE,    AXM,    AXE,
-                            SCAYL_WR, SCBYL_WR
+                            SCAYL_WR, SCBYL_WR, FC_WR
                 );
     modport VDP ( input     SRS,    MCS,
                             CVWA,   CVWAIH, CVRA,   CVRAIH,
@@ -282,7 +290,7 @@ interface T9990_REGISTER_IF;
                             WM,
                             FC,     BC,
                             OP,     AYM,    AYE,    AXM,    AXE,
-                            SCAYL_WR, SCBYL_WR
+                            SCAYL_WR, SCBYL_WR, FC_WR
                 );
 endinterface
 
@@ -440,7 +448,7 @@ module T9990_PORT (
     assign REG.DX   = {vdp_reg[37][2:0], vdp_reg[36][7:0]};
     assign REG.DY   = {vdp_reg[39][3:0], vdp_reg[38][7:0]};
     assign REG.DA   = {vdp_reg[39][2:0], vdp_reg[38][7:0], vdp_reg[36][7:0]};
-    assign REG.NX   = {vdp_reg[41][2:0], vdp_reg[40][7:0]};
+    assign REG.NX   = {vdp_reg[41][3:0], vdp_reg[40][7:0]};
     assign REG.NY   = {vdp_reg[43][3:0], vdp_reg[42][7:0]};
     assign REG.MJ   = {vdp_reg[41][3:0], vdp_reg[40][7:0]};
     assign REG.MI   = {vdp_reg[43][3:0], vdp_reg[42][7:0]};
@@ -852,8 +860,20 @@ module T9990_PORT (
 `endif
         end
 
+        else begin
+        // MSXimus Z: escritura de vuelta del motor (SY = R#34/35, DY = R#38/39). Va antes que las escrituras de
+        // la CPU de abajo: si caen en el mismo ciclo, la ultima asignacion (la CPU) gana
+        if(STATUS.WB_SY_WR) begin
+            vdp_reg[34]       <= STATUS.WB_SY[7:0];
+            vdp_reg[35][3:0]  <= STATUS.WB_SY[11:8];
+        end
+        if(STATUS.WB_DY_WR) begin
+            vdp_reg[38]       <= STATUS.WB_DY[7:0];
+            vdp_reg[39][3:0]  <= STATUS.WB_DY[11:8];
+        end
+
         // P#0 write
-        else if(det_w && MODE == 4'h0) begin
+        if(det_w && MODE == 4'h0) begin
             if(!REG.CVWAIH) begin
                 vdp_reg[0] <= vram_w_addr_inc[7:0];
                 vdp_reg[1] <= vram_w_addr_inc[15:8];
@@ -888,6 +908,7 @@ module T9990_PORT (
         else if( det_w && MODE == 4'h3) begin
             if(port4_regnum[5:0] <= 6'd52 || (port4_regnum[5:0] >= 6'd55 && port4_regnum[5:0] <= 6'd62)) vdp_reg[port4_regnum[5:0]] <= CD_IN;   // 55-62: MSXimus Z (V9991)
         end
+        end
     end
 
     /***************************************************************
@@ -905,6 +926,7 @@ module T9990_PORT (
     // T9990_TIMING las usa para reiniciar la cuenta de lineas del plano (VOFS_A/VOFS_B).
     assign REG.SCAYL_WR = det_w && (MODE == 4'h3) && (port4_regnum[5:0] == 6'd17);
     assign REG.SCBYL_WR = det_w && (MODE == 4'h3) && (port4_regnum[5:0] == 6'd21);
+    assign REG.FC_WR    = det_w && (MODE == 4'h3) && (port4_regnum[5:1] == 5'd24);   // R#48 / R#49
 
     /***************************************************************
      * P#5 STATUS read

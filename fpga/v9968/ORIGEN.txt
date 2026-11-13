@@ -1013,3 +1013,68 @@ Musica construida con ea53294 y la paleta anterior (referencia del mismo dia): s
 WHS +0,030; con este cambio: 13228 / 43046 / 34874 / 541 / +0,187 / +0,036 (WNS de las tres construcciones de la Musica: b9 +0,578,
 referencia +0,790, este +0,187; todas cierran, y el camino peor no es de la paleta).
 ================================================================================
+[2026-11-10] UPSTREAM DE HRA: V9968_Cartridge bee8f7e -> 6e0a76b (v0.94 a v0.99, 13 commits del 1 al 8/11; clon sin blobs en el
+scratchpad, git diff bee8f7e main -- src/v9968). Z1.4.5 (beta). Orden de Albert: "Los 3 de HRA!".
+################################################################################
+PORTADOS (10/11, a mano sobre nuestros ficheros con un script de sustituciones exactas; los mismos tres en el 60K y el 138K):
+  c71bc9d  vdp_cpu_interface.v: S#0 bit 6 = 5S AND NOT F (w_status_sprite_overmap = sprite_overmap & ~ff_frame_interrupt). La
+           rutina de VSYNC de Dragon Quest II, al ver el 5S, tapaba con E0 00 00 00 los atributos del logo de su portada. openMSX
+           llega a lo mismo por otro camino: solo arma el 5S/9S con F = 0 (SpriteChecker.cc, "Dragon Quest 2 needs this"), y como
+           evalua las lineas tarde, la lectura de VSYNC no lo ve. OCM-PLD (KdL, 04/02/2025, vdp_register.vhd) lo aplica SOLO en
+           sprites modo 2 por ZANAC A.I. (MSX1); HRA! en todos los modos, y aqui igual: ZANAC A.I. queda en la lista de pruebas.
+           No toca el armado del 5S ni el numero (_187b/c/d): solo la lectura.
+  1df063f  vdp_sprite_makeup_pixel.v: el plano N se elige en la fase N y llega a ff_color_* en la N+4; el arranque de la mezcla y
+           su latch iban en la fase 3 y cogian el plano 15 de la ranura anterior (o un hueco con CC = 0). Ahora en la fase 4, y la
+           exclusion de la colision pasa de la fase 1 a la 4 (cuenta tambien el plano 13). Nuestro fichero era el de su base.
+  a849a2c  vdp_vram_interface.v (la parte que queda tras 2a99ac9): command_vram_ready en la franja B =
+           ~(cpu_vram_valid | screen_mode_vram_valid | sprite_vram_valid). El bloque de aceptacion da prioridad a sprite y modo de
+           pantalla; con el ready mirando solo la CPU la cache de comandos daba por aceptado un acceso perdido (Dragon Slayer
+           colgado en el calabozo, su issue #7). Aqui se conserva nuestro gate vram_stall delante.
+YA ESTABA: 2a99ac9 (v0.99 vuelve a borrar FH con VSYNC y R#0/R#19, lo que siempre hizo nuestro arbol; la limpieza de FH de a849a2c
+           nunca se porto). 09519fd, 4294aea, a5ddd09, c109272, edc1ae2, 6e0a76b: historial, manual, informes y etiquetas.
+NO PORTADOS (pendientes; Albert eligio los tres de arriba):
+  c71bc9d  (otra parte) latch de R#23 al empezar la linea en vdp_sprite_select_visible_planes.v (+ selected_pixel_pos_y de 9 bits
+           a makeup_pixel / timing_control_sprite): un R#23 cambiado a mitad de linea mezclaba dos lineas en la seleccion.
+  419d1ff, 6094db2  vdp_command.v, LMCM: lee (SX, SY) con w_address_s y ff_sx[9:8] (nosotros, como bee8f7e, (DX, DY)); escribir R#44
+           carga la colour latch (S#7); con LMCM en marcha R#44 no baja TR; espera entre pixeles (c_wait_lmcm, 1 clk en modo
+           rapido). Nuestro vdp_command.v lleva la cola CPU->R#44 propia ("FIX BYTE PERDIDO"): hay que portarlo a mano.
+  76991af  solo bancos y sintesis (su LMCM 1x1 era un fallo del programa de prueba, history.md del 06/11).
+Bancos (tools/v9968_sim, Verilator en WSL; A/B contra una copia del arbol anterior):
+  tb_sprite_cc.sv + analiza_sprite_cc.py (run_sprite_cc.sh): VDP completo y VRAM perfecta, SCREEN 5 y sprites modo 2 con paleta
+           propia; calibracion de colores y retraso, CC = 1 solo, CC = 0 + CC = 1 (1, 1 OR 2, 2), prioridad, y con S16 los 16
+           planos. RTL anterior: el CC = 1 solo se ve (verde) y el plano 15 sale con retraso 8 en vez de 7 (3 fallos); RTL nuevo:
+           PASA, retraso 7 en los 16 planos (la posicion no cambia). PASA tambien con el RTL del 60K (DEFS=-DSIN_GEO3D) y el 138K.
+  tb_spcol.sv: fases B2, C2 y D2 (sondeo continuo de S#0 durante 2-3 frames, el 5S contado segun F). RTL anterior: 5S con F = 1
+           en la lectura por frame 10/10 y en el sondeo; RTL nuevo: 0 con F = 1, 24 con F = 0 (el 5S sigue vivo), fantasmas c4/c0
+           a 0 y colision viva, en los modos 1 (DQ2) y 2 (Fleet).
+  tb_slotb.sv (run_slotb.sh): peticiones de sprites y de modo de pantalla en la franja B durante un frame en T1, T2, G1, MC, G2,
+           G3, G4-G7, G7 + YJK y con SP2 + scroll, MSK, R#18, 212 lineas, entrelazado, sprites 16x16 ampliados, S16 y G7 + SP3:
+           CERO en las 19 (el caso de Dragon Slayer no se da aqui; el arreglo queda como cierre). HMMV y LMMM en SCREEN 5-8 y 12
+           con la pantalla y los sprites encendidos acaban con los bytes exactos, antes y despues (tambien en el 60K y el 138K).
+Build (Vivado 2019.2, estandar, antes de subir FPGA_PATCH a 5): WNS +0,545 ns, WHS +0,014 ns, slices 13277 (99,83 %), LUT 44836,
+FF 36700, BRAM 131. Ver la beta Z1.4.5 en docs/tecnica/09-changelog.md.
+================================================================================
+################################################################################
+[2026-11-10, segunda tanda] UPSTREAM DE HRA, lo que quedaba de bee8f7e -> 6e0a76b: el latch de R#23 y LMCM. Rama
+feature/hra-r23-lmcm (sobre la beta Z1.4.5). Orden de Albert: "sigue" mientras prueba la beta.
+################################################################################
+PORTADOS (script de sustituciones exactas; los mismos en el 60K y el 138K):
+  c71bc9d  (segunda parte) latch de R#23: vdp_sprite_select_visible_planes.v latchea la Y de la linea en screen_pos_x = 3FFF
+           (reg_sprite_nonR23_mode ? screen_pos_y : {0, pixel_pos_y}; el SSG ya ha puesto la linea nueva) y la usa para la
+           seleccion, el 5S y la fila del patron; sale por selected_pixel_pos_y (9 bits) hacia vdp_timing_control_sprite.v y
+           de ahi a vdp_sprite_makeup_pixel.v (pixel_pos_y de 9 bits: la Y de la colision de S#5/S#6). Un R#23 reescrito a
+           mitad del barrido de planos mezclaba dos lineas: la portada de Dragon Quest II veia 10 planos (9S falso).
+  419d1ff, 6094db2  vdp_command.v, LMCM: (1) lee el ORIGEN (SX, SY) con w_address_s y ff_sx[9:8]; aqui leia (DX, DY), como
+           bee8f7e; (2) el fin se mira solo en lmcm_next y, tras entregar un pixel, se espera a que los contadores avancen
+           (1 ciclo en modo rapido, {c_wait_lmcm, 11b} si no); (3) escribir R#44 carga la colour latch de S#7; (4) con LMCM en
+           marcha, escribir R#44 no baja TR. La cola CPU->R#44 (FIX BYTE PERDIDO) no cambia: solo la usan LMMC/HMMC/LFMC.
+Bancos nuevos (tools/v9968_sim):
+  tb_svp_hra.sv + run_svp_hra.sh: el banco de HRA! de la seleccion (su test_vdp_sprite_select_visible_planes, 6e0a76b) adaptado
+           a nuestros puertos; sus pruebas 5-9 son de SU overmap (solo con -DHRA_OVERMAP). La 10 (R#23 de 2Eh a 2Fh a mitad del
+           barrido, la portada de DQ2) FALLA con la beta (planos 00186303 en vez de 000618C3) y PASA con el latch; 1-4 y 11 pasan.
+           tb_sprite_cc con R#23 fijo: los volcados de pantalla de la beta y de esta rama son IDENTICOS byte a byte.
+  tb_lmcm.sv + run_lmcm.sh: VDP completo y VRAM perfecta; la VRAM se llena por la CPU con un patron por coordenada y LMCM se
+           lee por S#7 sondeando TR, con DX/DY lejos de SX/SY: SCREEN 8 (6x3, 1x1, DIX=1, DIY=1) y SCREEN 5 (7x2, 1x1, DIX=1),
+           en modo normal y rapido. Beta: 7 de 7 casos MAL (devuelve el (DX, DY), ceros). Esta rama: 14 de 14 PASAN.
+NO PORTADO: 5927e0f/f0f4610 (lectura adelantada de VRAM con WAIT), lo unico que queda de la v0.99.
+================================================================================

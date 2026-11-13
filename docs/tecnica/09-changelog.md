@@ -3,6 +3,76 @@
 Qué trae cada versión del MSXimus Z, de la más nueva a la más antigua. Las versiones grandes salen en la
 [release de GitHub](https://github.com/Papipapito/MSXimus_Z/releases); todas, por la actualización por red (F12 → U).
 
+## Z1.4.9 — 13/11/2026 · oficial (GitHub y la red) · El R800 ya no se duerme tras un HALT, y Ajustes, GM2 y V/B en el menú
+
+**Oficial el 13/11** (serie 2026111301, `archivo/release/build_z149.py`): los mismos binarios de la beta del 12/11 salvo el `ota_info` (serie, fecha y `canal=oficial`); en GitHub con los cuatro `BOOT.bin` y **MSXimusZboot** (Windows y macOS), sin `.elf` ni `.bit`. Reúne las betas Z1.4.5 a Z1.4.8 (abajo). La beta fue la serie 2026111109.
+
+El PL del estándar, Música y Dual es el de la Z1.4.7 (`FPGA_PATCH` = 7). Los perfiles **TR y TRV se recompilan** con los dos primeros arreglos. Todo sale de lo que se vio en placa con la Z1.4.4 y la Z1.4.8.
+
+- **TR/TRV: el R800 tras un HALT largo** (`fpga/r800/r800_timing.v`):
+  - **Síntoma:** en *Ghosts'n Goblins* V9990 el scroll del mapa que sale al morir iba a saltos en el perfil TRV y no en el normal.
+  - **Por qué solo en TR:** el juego pasa él solo al R800 cuando ve un turbo R (`CHGCPU(81h)` desde su INIT), así que mantener pulsado el 1 no cambiaba nada. Espera cada cuadro con `EI/HALT`.
+  - **El fallo:** en el HALT el regulador del R800 dejaba de contar el tiempo «de R800», y a los 4,6 ms su resta de 16 bits daba la vuelta. El R800 parecía adelantado y la interrupción que lo despierta entraba hasta 4,4 ms tarde, distinto en cada cuadro: el scroll se escribía con la pantalla a medio pintar.
+  - **Arreglo:** pasados 8.192 ciclos de espera, el retraso se acota como al arrancar el R800. Por debajo de ese umbral la temporización no cambia: los bancos de antes del R800 dan la misma salida.
+  - **Banco nuevo:** `fpga/r800/sim/run_trv_isr.sh`, el R800 contra el V9990 entero con el patrón del juego. La latencia pasa de 1,0-4,4 ms a 111-148 ns.
+  - El mismo arreglo vale para cualquier programa en R800 que espere con HALT más de 4,6 ms, y para el R800 tras el OSD abierto o una DMA larga de la SD.
+- **TR/TRV: el panel F12 dice qué CPU manda.** En la sección MSX pone «CPU R800 ROM», «CPU R800 DRAM» o, como siempre, «Z80 3,58 MHz». Lo saca de dos bits nuevos del buzón (`+0x68` bits 15:14). Antes no había forma de saberlo sin la telemetría de depuración.
+- **Ajustes enseña la versión del sistema** (la de `ota_info`) y no la del PL: la Z1.4.4 decía «Z1.4.1» y la Z1.4.8, «Z1.4.7». El companion cambia en el pack, antes de soltar el MSX, las dos lecturas de los puertos 2Fh y 29h de Ajustes por `LD A,n` (`ota_menu_version` en `ota.c`). Cambia las dos o ninguna.
+- **Lanzar ROM: «GM2: On/Off» y la tecla G solo si Ajustes tiene Slot 1 = Game Master 2.** Antes bastaba un mapper Konami o Konami-SCC: salía con el GM2 apagado en Ajustes.
+- **Lanzar ROM: «V/B = V9991» y las teclas V y B solo si el core tiene V9990.** En el perfil TR se anunciaban, y V o B colgaban.
+- **Bancos:**
+  - `run_trv_isr.sh` (nuevo);
+  - `ota_host`: casos 0 (versión de Ajustes) y 0b (la fila de la CPU del F12);
+  - `emu_menu_dual.py` con V9990 y GM2 (1194 comprobaciones);
+  - `perfil_ota_host`, `mxpf_host`, `tf2_host` y `dual_host` sin fallos.
+- **Probada en placa (12/11):** *Ghosts'n Goblins* V9990 en TRV ya no da saltos; con el GM2 apagado en Ajustes, Lanzar ROM ya no lo ofrece; lo demás, bien. Sigue en beta: faltan más pruebas antes de la versión final. Registro en `archivo/release/z1.4.9b/`.
+
+## Z1.4.8 — 11/11/2026 · beta (canal beta de la red) · Los perfiles del servidor ya no se quedan «buscando»
+
+Serie 2026111108. El PL es el de la Z1.4.7 (los mismos `.bit`, `FPGA_PATCH` = 7: Ajustes sigue enseñando «Z1.4.7»; la página de la actualización dice Z1.4.8); los cuatro perfiles se reempaquetan con la serie nueva (F12 → P → S tras actualizar). Cambia solo el programa del ARM, por lo que se vio en placa con la Z1.4.7: en Perfiles → servidor, B no hacía nada y U se quedaba «buscando».
+
+- **U/R y B mandan aunque haya una búsqueda en marcha** (`ota_busca` en `ota.c`): la cortan sin dejar nada abierto (la conexión HTTP, la difusión UDP y la WiFi de la S3, que se suelta y se vuelve a tomar) y buscan otra vez; B, en el otro canal. Antes `ota_tecla` las ignoraba hasta que la búsqueda acabara, y por la WiFi de la S3 son segundos.
+- **La búsqueda nunca gira más de 2 minutos**: cada paso ya tenía su plazo (el peor caso por la S3 ronda 95 s), y esto es la red de seguridad por si algo se queda colgado.
+- **Arrancada desde la SD, la vista del servidor también busca.** Ahí `ota_tecla` solo atiende la A (grabar la ranura A con el `BOOT.bin` de la TF1), y la vista se quedaba en «Pulsa U para buscar» sin hacer nada. La página de la actualización sigue igual (en SD, U, I y B no hacen nada allí).
+- **El perfil 1 se llama «Normal»** («Standard» en inglés): en la lista de Perfiles salía como «BOOT.bin», y en los avisos como «perfil 1». El id interno y la etiqueta `[P:1]` de las ROM no cambian.
+- Banco `perfil_ota_host`: tres casos nuevos (B y U a mitad de la búsqueda con cable y con la S3, y la vista del servidor arrancando desde SD), que fallan con el programa de la Z1.4.7. Siguen bien `ota_host`, `mxpf_host` y `tf2_host`.
+- **Sin probar en placa.** Registro en `archivo/release/z1.4.8b/`.
+
+## Z1.4.7 — 11/11/2026 · beta (canal beta de la red) · El V9990 con los arreglos de openMSX de noviembre
+
+Serie 2026111107; Ajustes enseña «Z1.4.7» (`FPGA_PATCH` = 7) y los cuatro perfiles se recompilan con ella (F12 → P → S tras actualizar).
+
+- **V9990: el motor de comandos, al día con openMSX** (sus arreglos del 5 al 9/11, medidos en un V9990 de verdad; el detalle de cada uno, en el commit `6980173`):
+  - **LINE**: el término de error empieza en `max(MJ,2)/2 − 1`, se dibujan MJ+1 puntos y MJ = 0 dibuja uno. Antes toda línea inclinada daba su paso menor tarde y le faltaba un punto (y MJ = 0 dibujaba 4096).
+  - **NX de 12 bits**: R#41 bit 3 cuenta y NX = 0 son 4096 píxeles (antes 2048).
+  - **BD y BX**: escribir el color (R#48/R#49) borra BD; un SRCH que no encuentra deja en BX el ancho de la imagen (hacia la derecha) o 7FFh (hacia la izquierda), y BD/BX arrancan a 0 con el reset.
+  - **P1, LMMV**: rellena las dos capas con R#48; R#49 ya no se cuela en la mitad de los puntos.
+  - **SY y DY se escriben de vuelta al acabar cada orden**, como hace el chip (y openMSX desde siempre en los rectángulos): DY avanza NY en LMMC, LMMV, LMMM, CMMC, CMMM…, SY en LMMM, LMCM y LMMV, POINT sube SY en 1, y PSET/ADVN mueven DY según AYE/AYM. Si la CPU escribe ese registro en el mismo ciclo, gana la CPU. No se porta lo que solo hace el chip y no las versiones publicadas de openMSX (NY = FFFh al acabar, SX/DX = 0, BX = SX). El escritorio del ARM y el del menú escriben todos los registros en cada orden: no les afecta.
+  - Banco nuevo: `tb_t9990_timing.sv +OMSX=1` (LINE en 445 casos contra un modelo de `executeLINE`, SRCH, BD/FC, NX = 0 y 2049, P1 y la escritura de vuelta en 10 órdenes). Con la Z1.4.6 da 478 fallos.
+- **Shim del V9968**: el mux de lectura del victim buffer pasa de prioridad (una cadena de 16) a AND-OR (3 niveles), y el 2:1 de la caché de sprites lo elige `spc_hit1`. Es la misma función (A/B con `tb_manbow`: la misma imagen y las mismas lecturas tardías). Es el mismo fichero que lleva ahora el 138K, al que le hacía falta para el timing.
+- **USB**: dos arreglos de host de TinyUSB (`tinyusb-upstream-host.patch`, sin subir el pin): al quitar un teclado o un ratón ya no se descuenta otro que no se llegó a montar, y una memoria que anuncie muchas unidades lógicas ya no se sale de la tabla.
+- **Sin probar en placa.** Para probar: demos y juegos del V9990 (Gfx9000) que dibujen con LINE o con órdenes encadenadas, el escritorio del V9990 y quitar y poner teclados y memorias USB.
+## Z1.4.6 — 10/11/2026 · beta (canal beta de la red) · Space Manbow sin rayitas y lo que quedaba del V9968 de HRA!
+
+Serie 2026111006; Ajustes enseña «Z1.4.6» (`FPGA_PATCH` = 6) y los cuatro perfiles se recompilan con ella (F12 → P → S tras actualizar). **Probada en placa el 10/11**: *Space Manbow* ya no saca rayitas junto a los sprites. Rama `feature/hra-r23-lmcm`; registro en `archivo/release/z1.4.6b/`.
+
+- **Las rayitas de *Space Manbow*** (ruido de una línea alrededor de la nave y de los enemigos, visto en placa el 10/11 y presente desde al menos la Z1.2.6): el motor de sprites del V9968 lee el dato 14-15 ciclos después de pedirlo, sin esperar, y la VRAM de la Zynq está en la DDR detrás de una caché (el *shim*). En el SCREEN 4 de Konami las tablas de sprites (C800h, F000-FFFFh) caían en las mismas entradas de la caché que las del fondo (0000-3FFFh), el fondo las desalojaba en cada línea y la lectura del sprite iba a la DDR y llegaba tarde: el sprite se pintaba una línea con la X, el color o el patrón de otro. Arreglo: una **caché solo de sprites** de 8 KB en el shim (`v9968_vram_shim.v`, bloque _M1, parámetro `SPC`), que el fondo no puede desalojar y que se sirve en el mismo ciclo que la caché grande. Encontrado con un banco nuevo, `tb_manbow.sv`, que mete en el VDP la VRAM y las interrupciones reales del juego sacadas de openMSX (`manbow_cuadro.tcl`): con VRAM perfecta el cuadro sale idéntico al de openMSX; por el shim, 188 píxeles en rayas; con la caché de sprites, 0 lecturas de sprite equivocadas desde el segundo cuadro. Solo en la Zynq (el Tang usa el mismo shim con `SPC = 0`).
+
+- **Sprites y R#23** (HRA! `c71bc9d`, la otra mitad): la línea de los sprites (con el scroll vertical de R#23) se fija al empezarla. Si el programa cambia R#23 a mitad del barrido de planos, ya no se mezclan dos líneas: la portada de *Dragon Quest II* llegaba a ver 10 sprites en una línea y marcaba un 9.º sprite falso. La Y de la colisión (S#5/S#6) sale de la misma línea.
+- **LMCM** (HRA! `419d1ff`, `6094db2`): el comando que pasa la VRAM a la CPU por S#7 leía las coordenadas de destino (DX, DY) en vez de las de origen (SX, SY); ahora lee el origen, como el V9938, y espera a que avancen los contadores entre píxel y píxel. Escribir R#44 carga el color que se lee en S#7 y, con LMCM en marcha, no baja TR.
+- Bancos nuevos: `tb_svp_hra.sv` (el banco de HRA! de la selección de sprites, adaptado; su prueba de R#23 falla con la Z1.4.5 y pasa ahora) y `tb_lmcm.sv` (LMCM leído por S#7 con el VDP completo: con la Z1.4.5 fallan los 7 casos, ahora pasan los 14 en modo normal y rápido). Con R#23 fijo la pantalla sale idéntica byte a byte.
+
+## Z1.4.5 — 10/11/2026 · beta (canal beta de la red) · El V9968 de HRA! v0.96-v0.98
+
+Tres arreglos del V9968 de HRA! (sus versiones v0.96 a v0.98, del 6 al 8/11), portados a mano sobre nuestros ficheros:
+
+- **S#0: el 5S se lee a 0 mientras F = 1** (HRA! `c71bc9d`). La rutina de la interrupción de VSYNC ya no ve el 5.º sprite que se marcó durante la imagen. *Dragon Quest II* lo usaba para esconder el logo de su portada. openMSX hace lo mismo («Dragon Quest 2 needs this»). Leído fuera de la interrupción (con F = 0), el 5S se ve como antes.
+- **Sprites con CC = 1 y plano 15** (HRA! `1df063f`). La mezcla de los planos empezaba una fase antes de tiempo: un sprite con CC = 1 sin otro con CC = 0 delante se veía (basura en la demo de *AshGuine III*) y, con 16 sprites por línea, el último salía un píxel a la derecha. La colisión cuenta también el plano 13.
+- **Comandos del VDP en la franja B** (HRA! `a849a2c`). El motor de comandos podía dar por aceptado un acceso a la VRAM que se llevaba un sprite (*Dragon Slayer* se colgaba en el calabozo). En nuestro RTL ese caso no se da en ningún modo medido; queda cerrado igualmente.
+- **Ajustes enseña «Z1.4.5»** (el PL cambia: `FPGA_PATCH` = 5). Los cuatro perfiles (Música, Dual, TR, TRV) se recompilan con el mismo V9968; con la serie nueva (2026111005) hay que volver a bajarlos (F12 → P → S).
+- Bancos nuevos en `tools/v9968_sim`: `tb_sprite_cc.sv` (CC = 1, prioridad, 16 sprites por línea: con el RTL anterior falla el CC = 1 y el plano 15), `tb_slotb.sv` (la franja B en 19 modos y configuraciones, y HMMV/LMMM con la pantalla encendida) y fases nuevas en `tb_spcol.sv` (el 5S con F = 0 y F = 1). Detalle en `fpga/v9968/ORIGEN.txt`.
+- **Sin probar en placa.** Para probar: la portada de *Dragon Quest II*, la demo de *AshGuine III*, *ZANAC A.I.* (MSX1: OCM-PLD no aplica el 5S AND NOT F en sprites modo 1 por este juego; HRA! y nosotros sí) y *ZANAC EX* / *Space Manbow*.
+
 ## Z1.4.4 — 10/11/2026 · GitHub y red · La ranura A desde la SD (sin Vivado)
 
 **Una placa nueva ya no necesita Vivado.** Con SW1 en SD y el `BOOT.bin` de la versión en una microSD FAT32 o FAT16 en TF1, **F12 → U** enseña *BOOT.bin de la SD* y la tecla **A** lo lee y **A, A** lo graba en la ranura A (la de fábrica) de la QSPI. Después, SW1 en QSPI y todo lo demás (preparar la tarjeta de perfiles con F12 → P, bajar los perfiles, actualizar por la red a la ranura B) es el uso de siempre.

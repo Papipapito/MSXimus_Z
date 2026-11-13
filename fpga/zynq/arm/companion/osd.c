@@ -211,6 +211,7 @@ static void osd_render(void)
         d.tr = (u8)((tel[33] >> 2) & 1u);
         d.tr_v99 = (u8)((tel[33] >> 8) & 1u);                       /* perfil TRV: el TR con V9990 */                           /* perfil TR: +0xC4 bit 2 (tel = MBOX + 0x40) */
         d.tr_bios = (u8)tr_bios_estado();                           /* perfil TR (fase 2): la BIOS del turbo R de la TF2 (tr_bios.c) */
+        d.cpu = (d.tr && ((tel[10] >> 15) & 1u)) ? (u8)(((tel[10] >> 14) & 1u) + 1u) : 0u;   /* +0x68 (TR): bit 15 manda el R800, bit 14 modo DRAM */
         osd_pagina_info(pag, &d);
     }
     osd_overlay(1);

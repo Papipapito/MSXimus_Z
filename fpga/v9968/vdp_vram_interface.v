@@ -276,7 +276,10 @@ module vdp_vram_interface (
 	assign command_vram_ready	= vram_stall          ? 1'b0 :
 	                         	  w_vram_refresh      ? 1'b0 :
 	                         	  is_access_timming_a ? ~(screen_mode_vram_valid | sprite_vram_valid) :
-	                         	  is_access_timming_b ? ~cpu_vram_valid : 1'b0;
+	                         	  is_access_timming_b ? ~(cpu_vram_valid | screen_mode_vram_valid | sprite_vram_valid) : 1'b0;
+	//	MSXimus (HRA! a849a2c, v0.96, 10/11/2026): en la franja B el bloque de arriba da prioridad a sprites y
+	//	modo de pantalla; si el ready solo miraba la CPU, la cache de comandos daba por aceptado un acceso que se
+	//	habia llevado otro y se quedaba esperando un dato que no llegaba (Dragon Slayer, en el calabozo; su issue #7).
 
 	function [7:0] func_rdata_sel(
 		input	[1:0]	address,

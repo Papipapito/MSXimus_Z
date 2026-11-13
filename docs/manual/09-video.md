@@ -135,7 +135,12 @@ Así la BIOS del MSX, que escribe en R#21 durante el arranque, no deja el chip e
 
 La consecuencia para quien pruebe software de V9968:
 
-- El software de **generación B** (DEVCON con 0x9F, V9968DM, el port ru66 de herraa1, las demos de renatus: TECH DEMO 0.7.0, BENCHMARK, PROBE) **no detecta el V9968** hasta que haga `OUT (9Ch),0` antes de tocar R#20/R#21. Es una instrucción en el programa. Para probar sin recompilar vale un `OUT &H9C,0` desde BASIC antes de lanzarlo, siempre que no haya un reset por medio: el reset vuelve a bloquear.
+- El software de **generación B** (DEVCON con 0x9F, V9968DM, el port ru66 de herraa1, las demos de renatus: TECH DEMO 0.7.0, BENCHMARK, PROBE) **no detecta el V9968** hasta que haga `OUT (9Ch),0` antes de tocar R#20/R#21. Es una instrucción en el programa.
+- Hay software de generación B que **tampoco escribe R#21**: da por hecho el R#21 = 0 que la BIOS ponía al arrancar. Aquí esa escritura se ignoró por el bloqueo, así que el chip sigue en modo V9958, sin los comandos nuevos ni los 256 KB. Es el caso de V9968DM: el logo sale, pero no gira, porque su LRMM no hace nada. DEVCON sí escribe R#21 él mismo.
+- Para probar ese software sin recompilar hay dos caminos. Los dos valen hasta el siguiente reset, que vuelve a bloquear y a poner el modo V9958:
+  - desde MSX-DOS, `V9968ON` (`tools/v9968_tests/V9968ON.COM`), que desbloquea y pone R#21 = 0;
+  - desde BASIC, `OUT &H9C,0:VDP(22)=0` antes de lanzarlo (`VDP(22)` es R#21).
+- Después hay que reiniciar antes de volver a los juegos normales: en modo V9968, el bit 7 de R#2 vuelve a ser una línea de dirección.
 - El software de **generación A**, el hecho contra el emulador de buppu3, necesita además un byte cambiado en R#20 (0xFF pasa a 0x9F). Está explicado en el capítulo técnico.
 - El software de **generación C**, el que ya hace el desbloqueo (el bitstream actual del cartucho de HRA! lo exige igual), funciona sin tocar nada.
 

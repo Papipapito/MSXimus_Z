@@ -89,9 +89,14 @@ void osd_pagina_info(osd_pag p, const osd_info_t *d)
     }
 
     seccion(p, 16, "MSX");
+    if (d->cpu) {                                                     /* perfiles TR (12/11/2026): manda el R800 (lo elige el programa con CHGCPU) */
+        x = dato(p, 2, 17, C_GRIS, "CPU "); x = dato(p, x, 17, C_AMARILLO, "R800");
+        dato(p, x + 1, 17, C_GRIS, d->cpu == 2u ? "DRAM" : "ROM");
+    } else {
     x = dato(p, 2, 17, C_GRIS, "Z80 "); x = dato(p, x, 17, d->turbo ? C_AMARILLO : C_BLANCO, d->turbo ? T("5,37", "5.37") : T("3,58", "3.58"));
     x = dato(p, x, 17, C_GRIS, " MHz");
     if (d->turbo) dato(p, x + 1, 17, C_AMARILLO, "turbo");
+    }
     x = dato(p, 2, 18, C_GRIS, "SCREEN "); osd_num(b, d->screen); x = dato(p, x, 18, C_BLANCO, b);
     x = dato(p, x, 18, C_GRIS, T(" · vídeo ", " · video ")); dato(p, x, 18, C_BLANCO, d->v9990 == 2u ? "V9991" : d->v9990 ? "V9990" : "V9968");
     if (d->tr) {                                                      /* perfil TR: sin V9990 ni Y8950; la ROM de ondas del OPL4 va al final de la fila */

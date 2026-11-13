@@ -205,6 +205,19 @@ module r800_timing #(
                 ff_vage    <= 7'd127;
                 ff_page_ok <= 1'b0;
             end else if (active) begin
+                // 12/11/2026 (Ghosts'n Goblins V9990 en el perfil TRV: el scroll del mapa a saltos): sin M1 (HALT, en el que el nucleo no hace
+                // ciclos de bus, o una parada larga) ff_v no avanza y ff_e si. Pasados 32.768 ciclos (4,6 ms) la resta con signo daba la vuelta y
+                // el R800 parecia ADELANTADO: en su siguiente M1 (el INTA de la interrupcion que lo despierta) se le retenia hasta 65.536 ciclos
+                // (9,2 ms). Con EI/HALT esperando la VBLANK del V9990 la ISR entraba de 0 a 4,4 ms tarde, distinto en cada cuadro, y escribia el
+                // scroll en plena pantalla (simulado en tb_trv_isr). Cuando el retraso pasa de 8.192 ciclos (1,1 ms: solo en esperas largas, nunca
+                // dentro de una instruccion normal) se acota a C_LIM, como hace w_v3 en cada M1, y la cuenta del refresco vuelve a empezar (como al
+                // arrancar el R800; si no, ff_lref quedaria muy atras y el R800 pagaria despues los refrescos de toda la espera). Por debajo de ese
+                // umbral nada cambia: acotarlo en cada ciclo a C_LIM cambiaba el credito de la regla de los 62 ciclos del VDP (fpga/r800/sim/run_vdp.sh,
+                // de 23,7 a 30,4 ciclos por IN (98h)). Lo que se asigne despues en este mismo ciclo (M1, accesos, E/S) manda.
+                if ($signed(ff_e - ff_v) > 16'sd8192) begin
+                    ff_v    <= ff_e - CL;
+                    ff_lref <= ff_e - CL;
+                end
                 // M1: end of the last instruction
                 if (w_t1 && !ff_bnd_done && !w_stall) begin
                     ff_bnd_done <= 1'b1;

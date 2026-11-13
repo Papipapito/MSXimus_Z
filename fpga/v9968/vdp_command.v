@@ -1056,6 +1056,10 @@ module vdp_command (
 		else if( ff_state == c_state_pre_finish && ff_command == c_point ) begin
 			ff_status_color	<= ff_read_pixel;
 		end
+		else if( register_write && register_num == 6'd44 ) begin
+			//	MSXimus (HRA! 419d1ff, 04/11/2026): escribir R#44 es escribir la colour latch que se lee en S#7 (openMSX: COL = value)
+			ff_status_color	<= register_data;
+		end
 	end
 
 	always @( posedge clk ) begin
@@ -1135,8 +1139,9 @@ module vdp_command (
 			ff_transfer_ready		<= 1'b0;
 			ff_fore_color			<= 8'd0;
 		end
-		else if( register_write && (register_num == 6'd44) ) begin
+		else if( register_write && (register_num == 6'd44) && !(ff_command == c_lmcm && ff_command_execute) ) begin
 			//	lmmc, hmmc, lfmc が VRAM へ書き終えるまで、転送禁止 (CPU→R#44)
+			//	MSXimus (HRA! 6094db2): con LMCM en marcha, escribir R#44 no baja TR (es la colour latch, no un dato para el motor)
 			ff_transfer_ready		<= 1'b0;
 		end
 		else if( ff_state == c_state_lmmc_next || ff_state == c_state_hmmc_next || (ff_state == c_state_lfmc_next && ff_bit_count == 3'd0) ) begin
@@ -1675,20 +1680,17 @@ module vdp_command (
 
 			//	LMCM command --------------------------------------------------
 			c_state_lmcm: begin
+				//	MSXimus (HRA! 419d1ff/6094db2, 04-05/11/2026): LMCM lee el ORIGEN, (SX, SY), como el V9938 y openMSX; aqui leia
+				//	(DX, DY). El fin se mira solo en lmcm_next, con los contadores ya avanzados.
 				ff_count_valid			<= 1'b0;
-				if( (w_nx_end || w_sx_overflow || w_dx_overflow) && w_ny_end ) begin
-					ff_state				<= c_state_pre_finish;
-				end
-				else begin
-					//	Read the location of (DX, DY)
-					ff_cache_vram_address	<= w_address_d;
-					ff_cache_vram_valid		<= 1'b1;
-					ff_cache_vram_write		<= 1'b0;
-					ff_state				<= c_state_wait_rdata_en;
-					ff_next_state			<= c_state_lmcm_make;
-					ff_wait_count			<= c_wait_lmcm;
-					ff_xsel					<= ff_dx[1:0];
-				end
+				//	Read the location of (SX, SY)
+				ff_cache_vram_address	<= w_address_s;
+				ff_cache_vram_valid		<= 1'b1;
+				ff_cache_vram_write		<= 1'b0;
+				ff_state				<= c_state_wait_rdata_en;
+				ff_next_state			<= c_state_lmcm_make;
+				ff_wait_count			<= c_wait_lmcm;
+				ff_xsel					<= ff_sx[9:8];
 			end
 			c_state_lmcm_make: begin
 				ff_state				<= c_state_lmcm_next;
@@ -1698,9 +1700,18 @@ module vdp_command (
 					if( (w_nx_end || w_sx_overflow || w_dx_overflow) && (w_ny_end || w_dy_overflow) ) begin
 						ff_state				<= c_state_pre_finish;
 					end
+					else if( reg_command_high_speed_mode ) begin
+						//	MSXimus (HRA! 6094db2): SX tarda 1 ciclo en avanzar; sin esperarlo la siguiente lectura sale del pixel viejo
+						ff_count_valid			<= 1'b1;
+						ff_wait_counter			<= 8'd1;
+						ff_next_state			<= c_state_lmcm;
+						ff_state				<= c_state_wait_counter;
+					end
 					else begin
 						ff_count_valid			<= 1'b1;
-						ff_state				<= c_state_lmcm;
+						ff_wait_counter			<= { c_wait_lmcm, 2'b11 };
+						ff_next_state			<= c_state_lmcm;
+						ff_state				<= c_state_wait_counter;
 					end
 				end
 				else begin

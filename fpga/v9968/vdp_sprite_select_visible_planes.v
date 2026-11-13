@@ -75,6 +75,7 @@ module vdp_sprite_select_visible_planes (
 	output		[31:0]	selected_attribute,
 
 	output		[4:0]	selected_count,
+	output		[8:0]	selected_pixel_pos_y,	//	MSXimus (HRA! c71bc9d): la Y latcheada de la linea
 	output				start_info_collect,
 
 	output				sprite_overmap,
@@ -97,6 +98,7 @@ module vdp_sprite_select_visible_planes (
 	wire		[2:0]	w_phase;
 	wire		[3:0]	w_sub_phase;
 	wire		[8:0]	w_pixel_pos_y;
+	reg			[8:0]	ff_pixel_pos_y;
 	reg			[5:0]	ff_plane_count;
 	reg			[5:0]	ff_current_plane_num;		//	Plane#0...#63
 	reg			[5:0]	ff_current_plane_num_start;	//	Plane#0...#63
@@ -322,7 +324,21 @@ module vdp_sprite_select_visible_planes (
 	assign w_y				= reg_sprite_mode3 ? w_attribute[9:0] : { 2'd0, w_attribute[7:0] };
 	assign w_mgy			= w_attribute[23:16];
 
-	assign w_pixel_pos_y	= reg_sprite_nonR23_mode ? screen_pos_y     : { 1'b0, pixel_pos_y };
+	//	MSXimus (HRA! c71bc9d, v0.98, 10/11/2026): R#23 se aplica al momento, asi que si la CPU lo reescribe a mitad del
+	//	barrido de planos, unos planos se comparaban con una linea y otros con la siguiente (la portada de Dragon Quest II
+	//	veia 10 planos: 9S falso). La Y de la linea se latchea al empezarla (screen_pos_x = 3FFF, cuando el SSG ya ha puesto
+	//	la nueva) y la usan la seleccion, el 5S, la fila del patron y la Y de la colision (selected_pixel_pos_y).
+	always @( posedge clk ) begin
+		if( !reset_n ) begin
+			ff_pixel_pos_y <= 9'd0;
+		end
+		else if( screen_pos_x == 14'h3FFF ) begin
+			ff_pixel_pos_y <= reg_sprite_nonR23_mode ? screen_pos_y : { 1'b0, pixel_pos_y };
+		end
+	end
+
+	assign w_pixel_pos_y			= ff_pixel_pos_y;
+	assign selected_pixel_pos_y	= ff_pixel_pos_y;
 	assign w_offset_y		= { w_pixel_pos_y[8], w_pixel_pos_y } - w_y;
 	assign w_attribute_y	= reg_sprite_mode3 ? w_offset_y[7:0]: ( reg_sprite_magify ? { 3'd0, w_offset_y[4:1] }: { 3'd0, w_offset_y[3:0] } );
 

@@ -1218,7 +1218,7 @@ assign keyboard_addr = ppi_port_c[3:0];
     // Z1.2.7 (13/10/2026): el motor wave del OPL4 como el chip: margen de 24 canales (-15 dB por canal y 19 bits; antes
     // recortaba y envolvia), TL con LD=0 bien, envolvente (OCT+RC, pasos, ataque) y pan a -3 dB/paso; el wave entra x2
     // (-3 dB por canal frente a la Z1.2.6).
-    localparam [7:0] FPGA_PATCH   = 8'd1;   // Z1.4.1 (05/11/2026: ROM de 4 MB o mas en TR, perfil TRV). Z1.4.0. Antes, Z1.3.2 (beta 30/10/2026: espejo del geo3d en 8Dh/8Fh). Z1.3.1 (30/10/2026): escritorio del V9990 por el ARM, reloj, ROM con disco, 4:3 Scale3x, S1990 solo temporizador. Z1.3.0 (30/10/2026): primera de la linea Z1.3. En la rama del V9991 llego a 20 (V9991h); antes, Z1.2.13 = 12 (Ajustes lo pintaba en hex: Z1.2.C)
+    localparam [7:0] FPGA_PATCH   = 8'd7;   // Z1.4.7 (beta 11/11/2026: V9990 con los arreglos de openMSX de noviembre -LINE, NX=4096, BD/BX, P1 LMMV, SY/DY de vuelta- y el shim con el mux del VB AND-OR). Z1.4.6 (beta 10/11/2026: latch de R#23 y LMCM de HRA!, cache de sprites del shim por Space Manbow). Z1.4.5 (beta 10/11/2026: V9968 de HRA! v0.96-v0.98: 5S AND NOT F, mezcla de sprites en la fase 4, franja B de los comandos). Z1.4.2 a Z1.4.4 no tocaron el PL. Z1.4.1 (05/11/2026: ROM de 4 MB o mas en TR, perfil TRV). Z1.4.0. Antes, Z1.3.2 (beta 30/10/2026: espejo del geo3d en 8Dh/8Fh). Z1.3.1 (30/10/2026): escritorio del V9990 por el ARM, reloj, ROM con disco, 4:3 Scale3x, S1990 solo temporizador. Z1.3.0 (30/10/2026): primera de la linea Z1.3. En la rama del V9991 llego a 20 (V9991h); antes, Z1.2.13 = 12 (Ajustes lo pintaba en hex: Z1.2.C)
                                             // Z1.2.11 = 21/10/2026: V9990, R#17/R#21 reinician la cuenta de lineas (split de Xybots), G de la paleta por P#1, glue a prueba de rebotes
                                             // Z1.2.10 = 16/10/2026: envolvente del OPL4 parada en -60 dB, DL=0 directo, LFO exacto, flags de LD A,I/LD A,R
                                             // Z1.2.9 = 15/10/2026: ruido de MBWave (LevelAddTLALFO), mux REG_RD, LFORST, DL, NEW2, shadow, modo memoria
@@ -2619,7 +2619,7 @@ assign keyboard_addr = ppi_port_c[3:0];
     wire        v68bk2_req, v68bk2_done_t;
     wire [21:0] v68bk2_addr;
     wire [15:0] v68bk2_rword;
-    v9968_vram_shim #(.VRAM_BASE(22'h280000)) u_v68shim (
+    v9968_vram_shim #(.VRAM_BASE(22'h280000), .SPC(1)) u_v68shim (     // SPC: cache de sprites aparte (Space Manbow, 10/11/2026)
         .clk_vdp(clk_86), .rst_n(rst86_n),
         .vram_address(v68_vram_address), .vram_write(v68_vram_write),
         .vram_valid(v68_vram_valid), .vram_wdata(v68_vram_wdata),
@@ -8608,7 +8608,9 @@ reg [1:0]  sd_wr_seq     = 2'd0;    // rueda con cada escritura: una linea
         .tel_dbg4({wave_tel, r15_cnt}),     // +0x60: {lat_max AR->R (ciclos 37,5 MHz), lecturas, escrituras} de wave_axi + cuenta r15
 `endif
 `ifdef ENABLE_TR
-        .tel_vmiss(tr_tel_d), .tel_vdrops({tr_tel_c[31:16], 6'd0, vtr_wp}),   // +0x6C / +0x68 (TR): ver tr_cpu.v
+        // 12/11/2026: +0x68 bit 15 = la CPU que manda es el R800 y bit 14 = modo DRAM de la S1990 (los dos de clk_54m, casi estaticos): el panel F12
+        // dice "R800 ROM", "R800 DRAM" o "Z80" (osd_info.c). Antes esos bits eran 0 y la CPU solo se veia con la telemetria de TR_DEBUG.
+        .tel_vmiss(tr_tel_d), .tel_vdrops({tr_tel_c[31:16], tr_r800_cur, dram_mode_w, 4'd0, vtr_wp}),   // +0x6C / +0x68 (TR): ver tr_cpu.v
 `else
         .tel_vmiss(v68dbg_miss), .tel_vdrops(v68dbg_drops),   // +0x68: fallos y drops del shim de VRAM (artefactos de 8 px)
 `endif   // +0x68: fallos y drops del shim de VRAM (artefactos de 8 px)

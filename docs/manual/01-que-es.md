@@ -63,7 +63,7 @@ Se recomienda un disipador sobre el chip: con él trabaja a unos 55 °C y sin é
 - No lleva la variante de VDP V9958: el V9968 es el único, y es compatible con todo lo que espera un V9958.
 - No es una placa con Linux: el procesador corre solo el companion, sin sistema operativo, y su único trabajo es servir al MSX. No hay consola ni escritorio: la red del ARM solo sirve para hablar con el MSX, que la ve como un ESP32 UNAPI.
 - La OLED no enseña la imagen del MSX: es monocroma, de 128x64, y solo sirve de pantallita de estado.
-- No arranca sin más el software escrito para la generación B del V9968 (DEVCON, V9968DM, TECH DEMO): tiene que hacer `OUT (9Ch),0` antes de tocar los registros extendidos. El [capítulo 09](09-video.md) lo explica.
+- No arranca sin más el software escrito para la generación B del V9968 (DEVCON, V9968DM, TECH DEMO): tiene que hacer `OUT (9Ch),0` antes de tocar los registros extendidos. V9968DM, que no escribe R#21, necesita además R#21 = 0. Para probarlo sin recompilar está `V9968ON.COM`. El [capítulo 09](09-video.md) lo explica.
 
 ## Cómo seguir
 

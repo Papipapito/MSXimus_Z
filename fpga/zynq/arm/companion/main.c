@@ -417,6 +417,8 @@ int main(void)
     v99desk_init();                                       /* rama beta: el canal ARM -> V9990 a cero (en la DDR hay basura) */
     dual_init();                                          /* perfil Dual: la palabra de control de B a cero */
     usleep(3000);                                         /* que el buzon (ronda de ~1 ms) lo vea antes de soltar el MSX */
+    ota_menu_version();                                   /* 11/11/2026: Ajustes dice la version de ota_info (Z1.4.9), no el FPGA_PATCH del PL. ANTES
+                                                             del perfil de arranque, que suelta el MSX el solo */
     {   /* 31/10/2026, perfil al arrancar (ajuste de la QSPI, pagina Perfiles > A): si esta en la TF1 y es de la serie de este BOOT.bin se
          * carga por PCAP ANTES de soltar el MSX (+0,6 s al encender); perfil_cargar ya deja el PL sembrado y suelta el MSX. Si no se
          * puede (sin tarjeta, otra serie, no esta...) sigue el perfil 1; una marca en la DDR evita un bucle de reinicios. */

@@ -105,7 +105,8 @@ Para ver qué hace el companion con la música: `tools/wg.tcl status` (estado, a
 | Un chip concreto no suena | Su canal está a 0/8 (mudo) en el mezclador | Subirlo. Cada cambio toca una nota en ese chip: si no se oye ni la nota, el chip no está sonando |
 | VGMPlay se cuelga con OPL3 | Nextor 3 | Usar el pack con Nextor 2.1.4 |
 | El SCC no suena en un juego | El juego busca el SCC en otro slot | Ajustes, Slot 1 = 2o SCC |
-| DEVCON 0x9F, V9968DM o TECH DEMO 0.7.0 no detectan el V9968 | Generación C: R#20/R#21 se ignoran hasta que el programa escribe el puerto 9Ch con el bit 7 a 0 | Es lo esperado; ese software tiene que hacer `OUT (9Ch),0` antes de tocar R#20/R#21 ([capítulo 09](09-video.md)) |
+| DEVCON 0x9F, V9968DM o TECH DEMO 0.7.0 no detectan el V9968 | Generación C: R#20/R#21 se ignoran hasta que el programa escribe el puerto 9Ch con el bit 7 a 0 | Es lo esperado; ese software tiene que hacer `OUT (9Ch),0` antes de tocar R#20/R#21. Para probarlo sin recompilar: `V9968ON` desde MSX-DOS ([capítulo 09](09-video.md)) |
+| V9968DM: el logo MSX sale pero no gira | No escribe R#21 y el chip sigue en modo V9958, sin LRMM: el R#21 = 0 de la BIOS se ignoró por el bloqueo | `V9968ON` desde MSX-DOS (`tools/v9968_tests/V9968ON.COM`) o `OUT &H9C,0:VDP(22)=0` desde BASIC; reiniciar después ([capítulo 09](09-video.md)) |
 | Guiones de 8 px en los tiles de Xevious | Defecto conocido del motor de comandos del V9968 | Nada por ahora; si sale en otro juego, anotarlo |
 | Bloques de 8 px "rancios" o ruido en zonas de la pantalla | Fallos del shim de la VRAM en la DDR (fondo o sprites) | `tools/tel.tcl 3` enseña los fallos por lectura ("shim VRAM: bgmiss/spmiss"); reportar con esa salida |
 
@@ -132,6 +133,7 @@ Sin módulo y sin cable el MSX no tiene red; con cable, el companion hace de ESP
 |---|---|---|
 | Con **W** salen caracteres sin sentido y no aparece el menú del ESP | El módulo no está alimentado o no responde | Alimentarlo por **su propio USB-C** (el USB host de la placa no basta para alimentarlo); la LCD tiene que encender |
 | La LCD enciende pero el menú W no ve el módulo | Falta la **masa común** (obligatoria si se alimenta aparte), o TX y RX al revés | Pin 26 del CAM1 ← TX del ESP (GPIO16 en la S3-LCD-1.69), 28 → RX (GPIO17), 30 = turbo (GPIO18), GND en 37/38. Nunca el pin 2 (VCC5) ni unir los 3V3 |
+| La actualización por WiFi (F12 → U) se corta a mitad, unas veces enseguida y otras tras un buen trozo; la LCD del módulo se apaga y vuelve a arrancar | **Le falta corriente al módulo**: al bajar, la WiFi tira picos fuertes y la S3 se reinicia (*brownout*). La caída suele llevarse también el USB de la placa (el teclado se va un momento). Visto el 10/11/2026 con la S3 colgada de la salida de 5 V de un hub USB | Alimentarla de una fuente que aguante los picos: con un cargador o el PC por su USB-C, o con 5 V directos de la placa, como los del ventilador, va bien. En el log del companion (`tools/armlog.tcl`) sale `USB: EHCI colgado` y, dos segundos después, `s3: sin respuesta a 18` y `ota: fallo: cortada` |
 | "FH: sin UNAPI" | El MSX no ve el driver: la línea del ESP hacia el PL no llega | Revisar el cruce TX/RX; `tools/tel.tcl` enseña los contadores del UART del ESP (bytes tirados y lecturas en vacío) |
 | "FH: sin red (tecla W)" | Red no configurada | Tecla W, Scan/Join |
 | "FH: CRC MAL" o descargas corruptas | Bytes perdidos en la FIFO del UART | Con la S3 en CAM1 no debería haberlos; si aparecen, anotar los contadores de `tel.tcl` y reportar |

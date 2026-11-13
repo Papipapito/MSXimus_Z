@@ -2,7 +2,7 @@
 
 <p align="center"><b>MSXimus Z — un MSX2+ completo en la OMDAZZ ZYNQ MINI (XC7Z020)</b></p>
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/versi%C3%B3n-Z1.4.4-blue">
+  <img alt="version" src="https://img.shields.io/badge/versi%C3%B3n-Z1.4.9-blue">
   <img alt="fpga" src="https://img.shields.io/badge/FPGA-Xilinx%20Zynq%20XC7Z020-green">
   <img alt="license" src="https://img.shields.io/badge/licencia-GPLv3%20%2B%20componentes%20no%20comerciales-orange">
 </p>
@@ -52,7 +52,7 @@ El menú de arranque: RETURN lanza, ESC arranca MSX-DOS/Nextor, **S** Ajustes, *
 | **Obligatorio** | **Teclado USB** y un adaptador de USB-C a USB-A (o un hub USB-C) para el conector **P3** | Hace falta para instalar (todo se hace desde el panel F12) y para usar el MSX |
 | **Obligatorio** | Una **microSD** para **TF1**, de 1 GB o más | Para instalar lleva el `BOOT.bin`; después guarda los **perfiles** del sistema (F12 → P). El MSX no la ve. La prepara la propia placa |
 | **Obligatorio** | Una **microSD** para **TF2** | La tarjeta del MSX: ROMs, discos, carpetas WaveGame. Particiones FAT16 para que el menú pueda escribir (partidas, descargas). La mejor forma de prepararla: [MSX SD Maker](https://github.com/Papipapito/SD_Maker) |
-| **Obligatorio** | Un **PC con lector de microSD** | Para copiar el `BOOT.bin` a TF1 y preparar TF2 (MSX SD Maker es para Windows) |
+| **Obligatorio** | Un **PC con lector de microSD** | Para preparar TF1 con **MSXimusZboot** (Windows y macOS, va en la release) y TF2 con MSX SD Maker (Windows) |
 | Recomendado | **Red**: cable Ethernet en **J3** con salida a Internet | Para la última versión (F12 → U), los perfiles (F12 → P → S) y File-Hunter. La IP la da el router. Sin red funciona igual, pero se queda en la versión instalada. J2 es del PL y no se usa |
 | Recomendado | Un disipador sobre el chip | Con él trabaja a unos 55 °C; sin él, a unos 80 |
 | Opcional | **Waveshare ESP32-S3-LCD-1.69** en el **CAM1** | La red por WiFi, con pantalla de estado, en vez del cable. Cuatro hilos, alimentada por su propio USB-C |
@@ -63,14 +63,14 @@ El interruptor de arranque **SW1**: **ON-ON = JTAG**, **ON-OFF = QSPI** (el uso 
 
 ## Puesta en funcionamiento
 
-Toda la máquina es **un solo fichero**, un `BOOT.bin`: FSBL, bitstream, companion, pack de BIOS y tabla de ondas del OPL4 juntos. La [release de GitHub](https://github.com/Papipapito/MSXimus_Z/releases/latest) trae cuatro, uno por variante, y el bitstream solo para cargarlo por JTAG:
+Toda la máquina es **un solo fichero**, un `BOOT.bin`: FSBL, bitstream, companion, pack de BIOS y tabla de ondas del OPL4 juntos. La [release de GitHub](https://github.com/Papipapito/MSXimus_Z/releases/latest) trae cuatro, uno por variante, y **MSXimusZboot**, el programa que prepara con ellos la tarjeta de instalación (Windows y macOS):
 
 | Fichero | Menús | Nextor |
 |---|---|---|
-| `BOOT_Z1.4.4_nextor214.bin` | Castellano | **2** (el estable, el que quieres) |
-| `BOOT_Z1.4.4_nextor214-en.bin` | Inglés | 2 |
-| `BOOT_Z1.4.4_nextor3.bin` | Castellano | 3 |
-| `BOOT_Z1.4.4_nextor3-en.bin` | Inglés | 3 |
+| `BOOT_Z1.4.9_nextor214.bin` | Castellano | **2** (el estable, el que quieres) |
+| `BOOT_Z1.4.9_nextor214-en.bin` | Inglés | 2 |
+| `BOOT_Z1.4.9_nextor3.bin` | Castellano | 3 |
+| `BOOT_Z1.4.9_nextor3-en.bin` | Inglés | 3 |
 
 Los perfiles **Música**, **Dual**, **Turbo R** y **Turbo R V9990** se bajan desde la placa: F12 → P → S.
 
@@ -82,9 +82,11 @@ Unos diez minutos. El detalle de cada paso, lo que se ve en pantalla y qué hace
 
 **1. En el PC: la tarjeta de instalación**
 
-1. Baja de la release el `BOOT_*.bin` de la variante que quieras (si dudas, `nextor214`).
-2. Formatea la microSD de TF1 en **FAT32** (o FAT16). Windows solo ofrece FAT32 en tarjetas de hasta 32 GB.
-3. Copia el fichero a la **raíz** y renómbralo exactamente **`BOOT.bin`** (cuidado con las extensiones ocultas de Windows: que no quede `BOOT.bin.bin`).
+1. Baja de la release **MSXimusZboot** (`MSXimusZboot.exe` en Windows, el `.zip` de macOS en un Mac con Apple Silicon) y ábrelo.
+2. Elige la microSD de TF1, la versión (la oficial de msx.barcelona, con su firma comprobada) y la variante (si dudas, Nextor 2.1.4 en castellano).
+3. **Preparar la tarjeta**: la formatea, copia el `BOOT.bin`, lo comprueba y enseña los pasos de abajo.
+
+A mano también vale: formatea la microSD en **FAT32** (o FAT16), copia a la **raíz** el `BOOT_*.bin` de la release y renómbralo exactamente **`BOOT.bin`** (cuidado con las extensiones ocultas de Windows: que no quede `BOOT.bin.bin`).
 
 **2. Arrancar desde la SD**
 
@@ -114,12 +116,12 @@ La ranura A no la tocan las actualizaciones: es la vuelta atrás (F12 → U, **F
 La otra forma de grabar la imagen de fábrica, y la única con un `BOOT.bin` anterior a la Z1.4.4.
 
 
-1. Clona este repositorio y copia el `fsbl.elf` de la release en `fpga/zynq/arm/fsbl/`: Vivado lo usa de ayudante para grabar la flash. También se puede compilar con `fpga/zynq/arm/fsbl/build.sh`.
+1. Clona este repositorio y compila el `fsbl.elf` con `fpga/zynq/arm/fsbl/build.sh` (o cópialo de la release Z1.4.4 en `fpga/zynq/arm/fsbl/`; no ha cambiado desde entonces): Vivado lo usa de ayudante para grabar la flash.
 2. Apaga, pon **SW1 en ON-ON** (JTAG), conecta el USB del JTAG de la placa, enciende y arranca `hw_server`.
 3. Desde `fpga/zynq`:
 
    ```
-   vivado -mode batch -source tools/qspi_program.tcl -tclargs program w25q128fv-qspi-x4-single BOOT_Z1.4.4_nextor214.bin
+   vivado -mode batch -source tools/qspi_program.tcl -tclargs program w25q128fv-qspi-x4-single BOOT_Z1.4.9_nextor214.bin
    ```
 
    Borra, graba y verifica, y acaba con `PROGRAM_OK`.
@@ -156,7 +158,7 @@ Todo lo demás, en [`docs/manual/12-actualizar.md`](docs/manual/12-actualizar.md
 **F12** congela el MSX y dibuja el panel sobre la imagen, en el idioma del menú. F12 otra vez y el juego sigue exactamente donde estaba.
 
 ```
-  MSXimus Z                          Z1.4.4
+  MSXimus Z                          Z1.4.9
   Sistema
     Temperatura    52,3°C  máx 55
     Tensiones (V)  1,00 · 1,80 · 1,00
@@ -214,7 +216,7 @@ fpga/zynq/arm/get_tinyusb.sh        # una vez (también get_minimp3.sh y get_mbe
 fpga/zynq/arm/companion/build.sh
 fpga/zynq/arm/fsbl/build.sh
 # 3. El pack de BIOS y las ondas, sacados de un BOOT.bin de la release
-python fpga/zynq/arm/boot/extraer_de_boot.py BOOT_Z1.4.4_nextor214-en.bin /tmp/publicado
+python fpga/zynq/arm/boot/extraer_de_boot.py BOOT_Z1.4.9_nextor214-en.bin /tmp/publicado
 # 4. Tu BOOT.bin                    -> fpga/zynq/arm/boot/BOOT.bin
 OTA_VERSION=dev fpga/zynq/arm/boot/make_boot.sh /tmp/publicado/pack.bin /tmp/publicado/yrw801.rom
 ```
@@ -225,7 +227,7 @@ La YRW801 (la tabla de ondas del OPL4, 2 MB) se puede sustituir por un fichero d
 
 ## Estado
 
-**La Z1.4.4 es la versión de GitHub y la última** (10/11/2026): la misma que ofrece la actualización por red (msx.barcelona). Se instala desde la propia microSD, sin Vivado, y con F12 → U se sigue al día. Ajustes sigue enseñando «Z1.4.1» (el PL no ha cambiado desde entonces); la versión del sistema, «Z1.4.4», sale en la cabecera del panel F12 y en la OLED.
+**La Z1.4.9 es la versión de GitHub y la última** (13/11/2026): la misma que ofrece la actualización por red (msx.barcelona). Se instala desde la propia microSD, sin Vivado (la tarjeta la prepara MSXimusZboot), y con F12 → U se sigue al día. Ajustes, la cabecera del panel F12 y la OLED enseñan la versión del sistema.
 
 ## Documentación
 
@@ -255,6 +257,7 @@ docs/                 Manual de usuario y referencia técnica
 
 ## Últimas versiones
 
+- **Z1.4.9** (13/11, en GitHub y por la red): reúne las betas Z1.4.5 a Z1.4.9. **V9968**: los arreglos de HRA! v0.94 a v0.98 (el logo de *Dragon Quest II*, los sprites con CC = 1, *Dragon Slayer*, el latch de R#23 de los sprites y LMCM) y una caché de sprites para la VRAM en la DDR (*Space Manbow* ya no ensucia los sprites). **V9990**: los arreglos de openMSX de noviembre, y el USB con TinyUSB al día. **Turbo R**: el R800 ya no se duerme tras un HALT largo (el scroll de *Ghosts'n Goblins* V9990 en el perfil TRV) y el panel F12 dice qué CPU manda. **Perfiles**: en la vista del servidor, U y B cortan la búsqueda en marcha, con un plazo de 2 minutos y también arrancada desde SD, y el perfil 1 se llama «Normal». **Menú**: Ajustes enseña la versión del sistema, «GM2» solo sale con Slot 1 = Game Master 2 y «V/B» solo con V9990. La tarjeta de instalación la prepara **MSXimusZboot** (Windows y macOS), que va en la release. Tras actualizar, vuelve a bajar los perfiles (F12 → P → S).
 - **Z1.4.4** (10/11, en GitHub y por la red): **la instalación ya no necesita Vivado**. Con SW1 en SD, la placa graba ella misma en su QSPI el `BOOT.bin` de una microSD FAT32 o FAT16 de TF1 (F12 → U, A, A, A) y, si la tarjeta no le sirve, dice qué ha encontrado en ella. Requisitos y puesta en funcionamiento paso a paso, aquí arriba y en el [capítulo 02 del manual](docs/manual/02-instalacion.md#puesta-en-funcionamiento-paso-a-paso). Un perfil solo se carga con el sistema de su misma serie: tras actualizar, vuelve a bajar los perfiles (F12 → P → S).
 - **Z1.4.3** (09/11, en GitHub y por la red): la microSD de **TF1** pasa a ser solo la tarjeta de los **perfiles** y el MSX ya no la ve (deja de ser la unidad B: de Nextor: los datos que tuviera hay que copiarlos antes a TF2); la placa prepara la tarjeta sola (F12 → P), con salvaguardas, y baja los perfiles por su cuenta; **`.dsk` de varios discos** (un fichero de N × 720 KB se monta como N unidades de Nextor) y tipo «Multidisco» en el menú; `NEXTOR.EMU` se reutiliza en las particiones FAT16 en lugar de perder un cluster por montaje; **Nextor 3.0 final**; el firmware del ESP32-S3 vive ya en su propio repositorio. Reúne la Z1.4.1 y la Z1.4.2, que no llegaron a publicarse por separado: la Z1.4.1 trajo el perfil **Turbo R V9990** (NEO-16 de hasta 16 MB), arregló las ROM de 4 MB o más lanzadas desde el menú en el perfil Turbo R e hizo arrancar *Illusion City* en `.DSK` en los dos perfiles Turbo R.
 - **Z1.4.0** (04/11, en GitHub y por la red): los **perfiles** (Música, Dual y Turbo R, que se bajan desde la placa: F12 → P → S), sprites del V9968 en SCREEN 10, 11 y 12, geo3d también en 8Dh/8Fh, los registros del PSG legibles por A2h y un cuelgue del USB arreglado.

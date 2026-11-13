@@ -21,6 +21,7 @@ typedef struct {
     u8  dual;                             /* perfil Dual: la pagina de informacion ofrece la tecla B (maquina B) */
     u8  tr;                               /* perfil TR (fase 1): sin V9990 ni OPL4; el PL lo declara en +0xC4 bit 2 (vale tambien cargado por JTAG) */
     u8  tr_v99;                           /* perfil TRV: el TR con V9990 */
+    u8  cpu;                              /* perfiles TR (12/11/2026): 0 manda el Z80, 1 el R800 en modo ROM, 2 el R800 en modo DRAM (+0x68 bits 15:14) */
     u8  tf1_aviso;                        /* perfiles.c: 1 = hay una tarjeta nueva en la TF1 sin preparar, 2 = es de las betas (se puede convertir); 0 = nada */
     u8  tr_bios;                          /* perfil TR (fase 2): TR_BIOS_* (tr_bios.h), la BIOS del turbo R que pone el usuario en la TF2 */
 } osd_info_t;

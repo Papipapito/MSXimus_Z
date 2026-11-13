@@ -823,3 +823,40 @@ Con la BIOS del turbo R, la megaram no responde a lecturas desde el reset hasta 
 **Megaram de 16 MB:** `ram_addr` pasa a 25 bits y los 8 MB altos van a 0x0C000000. El firmware del tR no se mueve. Los registros NEO también responden en 9000h-BFFFh, porque Monkey Island 2 los usa ahí.
 
 **Limitaciones:** el camino de Y8950 sigue fuera, y `report_cdc` aún avisa de `RESO` hacia `v99_disp_s` (CDC-10), que es igual en el estándar y solo decide el modo del compositor.
+
+## 31. El R800 tras un HALT largo: la interrupción entraba hasta 4,4 ms tarde (12/11/2026, Z1.4.9)
+
+**Lo que se vio en placa (Z1.4.4 y Z1.4.8, perfil TRV):** en *Ghosts'n Goblins* V9990 (ASM Team, 2020, la ROM de 2 MB), el scroll del mapa que sale al morir va a saltos. En el perfil normal va fino. Mantener pulsado el 1 al lanzarlo no cambiaba nada.
+
+**Por qué solo en TR/TRV.** El juego mira el byte 002Dh de la BIOS y, si es 3 (turbo R), llama a `CHGCPU` con A = 81h (R800 en modo ROM, con el LED). Lo hace desde su INIT (ROM 0x06DF: `LD A,(002Dh) / CP 2 / JR Z / CP 3 / JR NZ / LD A,81h / CALL 0180h`), así que en los perfiles TR corre en R800 lance el menú en Z80 o no (en openMSX, FS-A1ST con GFX9000: `CHGCPU(81h)` a los 5,71 s). En un MSX2+ busca el turbo de Panasonic (`OUT 40h,08h` / `IN 40h` = F7h) y corre en Z80. El 1 al arrancar no influye: el menú ya lanza en Z80 y el juego cambia luego.
+
+**El bucle del juego** es `LD A,(C0BCh) / OR A / JR NZ / EI / HALT / EI / XOR A / LD (C0BCh),A ...`, en IM 2 con la tabla en ED00h-EE00h (todo EEh) y la rutina en EEEEh → 7EB3h: `IN A,(66h) / AND 7 / OUT (66h),A / BIT 0,A`, y si es la VBLANK escribe R#17-R#24 (el scroll) y suma uno a C0BCh. Solo tiene activa la interrupción de VBLANK del V9990 (R#9 = 01h); la del VDP está apagada (R#1 = 50h). En openMSX escribe el scroll 10-30 µs después de cada VBLANK, a 1 píxel por cuadro.
+
+**El fallo, en `r800_timing.v`.** El regulador lleva dos cuentas de 16 bits: `ff_e` (ciclos de R800 transcurridos) y `ff_v` (los que habría gastado un R800 de verdad). En el HALT el núcleo no hace ciclos de bus, así que `ff_v` se queda quieto y `ff_e` sigue. Pasados 32.768 ciclos (4,6 ms) la resta con signo `ff_e − ff_v` da la vuelta y el R800 parece **adelantado**. En su siguiente M1 (el INTA de la interrupción que lo despierta) `w_stall` lo retenía hasta que `ff_e` alcanzaba a `ff_v`: hasta 65.536 ciclos (9,2 ms). El juego pasa unos 14 ms por cuadro en el HALT, así que la ISR entraba de 0 a 4,4 ms tarde, distinto en cada cuadro, y escribía el scroll ya con la pantalla pintándose. Con el Z80 no pasa, porque no tiene regulador. Es el mismo tipo de fallo que el de `ff_lvdp` del 04/11 (apartado 18), en otra cuenta.
+
+**Arreglo:** cuando el retraso pasa de 8.192 ciclos (1,1 ms, solo en esperas largas: HALT, la DMA de la SD, el OSD abierto), `ff_v` se lleva a `ff_e − C_LIM` y la cuenta del refresco (`ff_lref`) vuelve a empezar, como al arrancar el R800. Por debajo de ese umbral no cambia nada. Una primera versión acotaba el retraso a `C_LIM` en todos los ciclos y cambiaba el crédito de la regla de los 62 ciclos del VDP: en `run_vdp.sh` pasaba de 23,7 a 30,4 ciclos por `IN (98h)`. Por eso se descartó.
+
+**Banco nuevo: `fpga/r800/sim/run_trv_isr.sh`.** Pone `tb_trv_isr.sv` y `trv_isr.asm` contra el V9990 entero, con el cableado de `top_zynq.v` bajo `TR_V9990`:
+
+- `tr_cpu` entero;
+- el decode de 60h-6Fh y `v9990_arm_port`;
+- el WAIT registrado en `clk_86` con 3 etapas, el dato con 2 registros y el strobe mínimo de 36 ciclos;
+- la INT registrada con 2 etapas;
+- el `v9990_zynq` con su caché de VRAM contra un esclavo AXI de mentira.
+
+Corre el patrón del juego y comprueba en cada VBLANK tres cosas: que la interrupción se procesa una sola vez, que R#17-R#24 son los que escribió la CPU y la latencia INT → INTA.
+
+| Versión | Latencia INT → INTA |
+|---|---|
+| Antes del arreglo | 1,0 / 1,9 / 2,7 / 3,6 / 4,4 ms, y vuelta a empezar (`TB_FAIL`) |
+| Con el arreglo | 111-148 ns en los 14 cuadros, también con esperas de memoria al azar y otra fase de relojes (`TB_OK`) |
+
+Las lecturas y escrituras del V9990 iban bien en los dos casos. Los bancos de antes (`run_r800.sh` con `halttest`, `inttest` y `timtest`, `run_int.sh`, `run_int3.sh`, `run_intio.sh`, `run_io.sh`, `run_mem.sh`, `run_vdp.sh` y `run_opll.sh`) dan **exactamente la misma salida** con el regulador de antes y con el nuevo.
+
+**Además, el panel F12 dice qué CPU manda:**
+
+- `+0x68` del buzón en los perfiles TR: bit 15 = `tr_r800_cur`, bit 14 = modo DRAM de la S1990; antes eran ceros.
+- `osd_info.c` pinta «CPU R800 ROM» o «CPU R800 DRAM» en lugar de «Z80 3,58 MHz».
+- Con el panel abierto la CPU está parada, y la línea dice la que mandaba al abrirlo.
+
+**Sin probar en placa.**

@@ -19,14 +19,16 @@ Lo que hay que hacer con una placa nueva, de la caja a jugar, sin Vivado. Son un
 | Un **PC con lector de microSD** | Para copiar el `BOOT.bin` a TF1 y preparar TF2 (MSX SD Maker es para Windows) |
 | **Red**: un cable Ethernet en **J3** con salida a Internet (la IP la da el router), o la WiFi de la ESP32-S3 (sección 8) | Para dejarla en la última versión y bajar los perfiles. Sin red el MSX funciona igual, pero se queda en la versión instalada y sin perfiles |
 
-No hace falta Vivado ni ningún programa en el PC aparte del explorador de archivos y MSX SD Maker.
+No hace falta Vivado. En el PC, **MSXimusZboot** (Windows y macOS, va en la release) prepara la tarjeta de instalación y MSX SD Maker la del MSX. La de instalación también se puede hacer a mano con el explorador de archivos.
 
 ### 1. Preparar la tarjeta de instalación (en el PC)
 
-1. De la [release de GitHub](https://github.com/Papipapito/MSXimus_Z/releases/latest) baja **uno** de los `BOOT_*.bin`: el de la variante que quieras (sección 2, *Las cuatro variantes*). Si dudas, `nextor214` (castellano, Nextor 2.1.4). Se puede cambiar después desde la placa.
-2. Formatea la microSD de TF1 en **FAT32** (o FAT16). En Windows: botón derecho sobre la unidad, *Formatear*, sistema de archivos *FAT32*, tamaño de unidad de asignación *predeterminado*. Windows no ofrece FAT32 en tarjetas de más de 32 GB: usa una de 32 GB o menos.
-3. Copia el fichero a la **raíz** de la tarjeta, no dentro de una carpeta, y renómbralo exactamente **`BOOT.bin`**. Ojo con Windows, que esconde las extensiones: si el nombre queda `BOOT.bin.bin`, la placa no lo encuentra (en el Explorador, *Vista* → *Mostrar* → *Extensiones de nombre de archivo* las enseña).
-4. Expulsa la tarjeta desde Windows antes de sacarla.
+1. De la [release de GitHub](https://github.com/Papipapito/MSXimus_Z/releases/latest) baja **MSXimusZboot**: `MSXimusZboot.exe` para Windows o el `.zip` de macOS (Mac con Apple Silicon). En Windows pide permiso de administrador al abrirse y, en el Mac, la contraseña al escribir la tarjeta. Si el sistema avisa de que no conoce al desarrollador: en Windows, *Más información* → *Ejecutar de todas formas*; en el Mac, botón derecho → *Abrir*.
+2. Mete la microSD de TF1 en el lector y elígela en la lista. Solo salen lectores SD y memorias USB, nunca el disco del sistema.
+3. Elige la versión y la variante. El programa lee los mismos manifiestos firmados de msx.barcelona que la placa y comprueba su firma; la versión oficial es la de la release. Si dudas de la variante, Nextor 2.1.4 en castellano (sección 2, *Las cuatro variantes*): se puede cambiar después desde la placa. También acepta un `BOOT_*.bin` bajado de la release.
+4. **Preparar la tarjeta**: baja el `BOOT.bin`, lo comprueba con su SHA-256, formatea la tarjeta (FAT32, o FAT16 en las de hasta 2 GB), lo copia a la raíz y lo relee todo. Al acabar enseña los pasos en la placa, los mismos de abajo.
+
+A mano, sin el programa: baja de la release **uno** de los `BOOT_*.bin` y formatea la microSD de TF1 en **FAT32** (o FAT16). En Windows: botón derecho sobre la unidad, *Formatear*, sistema de archivos *FAT32*; Windows no ofrece FAT32 en tarjetas de más de 32 GB. Copia el fichero a la **raíz** de la tarjeta y renómbralo exactamente **`BOOT.bin`**. Ojo con las extensiones ocultas de Windows: si queda `BOOT.bin.bin`, la placa no lo encuentra (en el Explorador, *Vista* → *Mostrar* → *Extensiones de nombre de archivo*). Expulsa la tarjeta antes de sacarla.
 
 Si ya tienes la tarjeta del MSX hecha con MSX SD Maker, tenla a mano; si no, se puede preparar al final.
 
@@ -113,7 +115,7 @@ Una sola imagen, que el arranque del PS (el FSBL) lee de la QSPI o de TF1 y repa
 | `yrw801.rom` | La ROM de ondas del MoonSound, 2 MB | DDR 0x0F000000 |
 | `ota_info.bin` | 256 bytes de texto con la identidad de la imagen (versión, serie, variante, idioma y placa), que la actualización por red compara con la publicada | DDR 0x00E10000 |
 
-El FSBL carga las siete particiones y salta al companion; el companion inicializa TF2, el USB, la red y la OLED, lee los ajustes de la QSPI, los siembra en el core y suelta el MSX. En el lado del PL no hay ninguna memoria no volátil: el pack y las ondas se cargan en la DDR en cada arranque. Un `BOOT.bin` mide unos 6 MB (6.344.256 bytes los de la Z1.4.4).
+El FSBL carga las siete particiones y salta al companion; el companion inicializa TF2, el USB, la red y la OLED, lee los ajustes de la QSPI, los siembra en el core y suelta el MSX. En el lado del PL no hay ninguna memoria no volátil: el pack y las ondas se cargan en la DDR en cada arranque. Un `BOOT.bin` mide unos 6 MB (6.377.024 bytes los de la Z1.4.9).
 
 ### Las cuatro variantes
 
@@ -121,14 +123,14 @@ Hay un `BOOT.bin` por variante: lo único que cambia entre ellos es el pack de B
 
 | Fichero | Menús, Ajustes y panel | Nextor |
 |---|---|---|
-| `BOOT_Z1.4.4_nextor214.bin` | Castellano | **2.1.4**, el estable, el que quieres |
-| `BOOT_Z1.4.4_nextor214-en.bin` | Inglés | 2.1.4 |
-| `BOOT_Z1.4.4_nextor3.bin` | Castellano | 3 |
-| `BOOT_Z1.4.4_nextor3-en.bin` | Inglés | 3 |
+| `BOOT_Z1.4.9_nextor214.bin` | Castellano | **2.1.4**, el estable, el que quieres |
+| `BOOT_Z1.4.9_nextor214-en.bin` | Inglés | 2.1.4 |
+| `BOOT_Z1.4.9_nextor3.bin` | Castellano | 3 |
+| `BOOT_Z1.4.9_nextor3-en.bin` | Inglés | 3 |
 
 ### De dónde sale
 
-La release `Z1.4.4` de GitHub trae los cuatro `BOOT_Z1.4.4_*.bin` listos para grabar y, aparte, `msximus_zynq_Z1.4.4.bit`, el mismo bitstream que va dentro de ellos, que solo hace falta para cargarlo por JTAG en desarrollo. Los arreglos menores no llegan a GitHub: salen solo por la actualización por red. Si sale una versión posterior solo por la red, se graba la de GitHub y luego **F12 → U** la actualiza ([capítulo 12](12-actualizar.md)). Se baja el `BOOT_*.bin` de la variante elegida y ya está; en la QSPI se graba tal cual (sección 4) y para el arranque por SD se copia a la tarjeta con el nombre `BOOT.bin` (sección 5).
+La release `Z1.4.9` de GitHub trae los cuatro `BOOT_Z1.4.9_*.bin` listos para grabar y **MSXimusZboot** (Windows y macOS), el programa que prepara con ellos la tarjeta de instalación. El bitstream suelto y el `fsbl.elf` ya no van en la release: solo hacen falta para cargar por JTAG en desarrollo, y se compilan (o se toman de la release `Z1.4.4`; el FSBL no ha cambiado desde entonces). Los arreglos menores no llegan a GitHub: salen solo por la actualización por red. Si sale una versión posterior solo por la red, se graba la de GitHub y luego **F12 → U** la actualiza ([capítulo 12](12-actualizar.md)). Se baja el `BOOT_*.bin` de la variante elegida y ya está; en la QSPI se graba tal cual (sección 4) y para el arranque por SD se copia a la tarjeta con el nombre `BOOT.bin` (sección 5).
 
 Quien prefiera montarlo (con sus propias ROMs en el pack, o con un core compilado) tiene un script de bash:
 
@@ -181,7 +183,7 @@ Con la placa arrancada desde SD las teclas de la red de esa página no hacen nad
 
 **Herramientas**: Vivado 2019.2 con su `hw_server`, el JTAG por USB de la placa y el árbol del repositorio con `fpga/zynq/arm/fsbl/fsbl.elf`. Vivado usa nuestro FSBL como ayudante: lo baja por JTAG y le va pasando el fichero por trozos, así que no hace falta el SDK.
 
-**El `fsbl.elf`** viene en la release de GitHub: se copia en `fpga/zynq/arm/fsbl/`. Es el mismo FSBL que va dentro de los `BOOT.bin` de esa versión.
+**El `fsbl.elf`** venía en la release de GitHub hasta la `Z1.4.4`, y desde la Z1.4.9 ya no va en ella: se compila (abajo) o se toma de la release `Z1.4.4` y se copia en `fpga/zynq/arm/fsbl/`. No ha cambiado desde entonces: es el mismo FSBL que va dentro de los `BOOT.bin` de la Z1.4.9.
 
 **Compilarlo** es la alternativa. Hace falta un bash (el de Git for Windows vale), la toolchain **Arm GNU 14.2** (`arm-none-eabi-gcc`) y el árbol `data/embeddedsw` de Vivado 2019.2, de donde salen las fuentes del `zynq_fsbl`; el resto (el `ps7_init`, el driver del PCAP y el gancho del salto a la ranura B) ya está en `fpga/zynq/arm/fsbl/`:
 
@@ -195,7 +197,7 @@ Termina con `BUILD_OK` y deja `fsbl.elf` en esa carpeta. Las dos rutas de instal
 2. Desde `fpga/zynq`, con el `BOOT_*.bin` de la variante elegida (o el que se haya montado):
 
    ```
-   vivado -mode batch -source tools/qspi_program.tcl -tclargs program w25q128fv-qspi-x4-single BOOT_Z1.4.4_nextor214.bin
+   vivado -mode batch -source tools/qspi_program.tcl -tclargs program w25q128fv-qspi-x4-single BOOT_Z1.4.9_nextor214.bin
    ```
 
    `w25q128fv-qspi-x4-single` es el nombre que Vivado da al Winbond W25Q128 de U15; si una placa lleva otra flash, la cabecera del script lista los nombres de las Micron y Spansion equivalentes. El script borra, graba y verifica desde el offset 0 y acaba con `PROGRAM_OK`.

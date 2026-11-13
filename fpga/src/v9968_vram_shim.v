@@ -24,9 +24,18 @@
 //   -> bk_done_t (toggle) + bk_rword[15:0] (palabra 16b alineada, como wv)
 // Presupuesto medido (saga wave): ~300-500ns/op = 26-43 ciclos de 85.9.
 // ============================================================================
+`ifndef SHIM_SPC_DEFAULT
+`define SHIM_SPC_DEFAULT 0
+`endif
+`ifndef SHIM_SPC_SOLO_DEFAULT
+`define SHIM_SPC_SOLO_DEFAULT 0
+`endif
 module v9968_vram_shim #(
-    parameter [21:0] VRAM_BASE = 22'h280000   // 256KB para el V9968 en SDRAM
+    parameter [21:0] VRAM_BASE = 22'h280000,  // 256KB para el V9968 en SDRAM
                                               // (tras la sample RAM del OPL4)
+    parameter        SPC = `SHIM_SPC_DEFAULT, // 10/11/2026: 1 = CACHE DE SPRITES aparte (bloque _M1 mas abajo).
+                                              // La Zynq la pone a 1; el Tang (60K/138K) sigue sin ella.
+    parameter        SPC_SOLO = `SHIM_SPC_SOLO_DEFAULT // 1 (solo con SPC): los fills de sprite NO entran en la sc-cache
 )(
     input  wire        clk_vdp,          // 85.909 MHz
     input  wire        rst_n,
@@ -389,6 +398,7 @@ reg [15:0] pfB_wr;                       // rescate) REGISTRADA — el push desd
 reg        fill_pend;
 reg [15:0] fill_addr;
 reg [31:0] fill_word;
+reg        fill_nosc;                    // _M1: este fill no se escribe en la sc-cache (ver SPC_SOLO)
 reg        fill_sp;                      // _150: el fill viene de un fetch de
                                          // SPRITE (unico que alimenta el victim
                                          // buffer — ver el bloque _150)
@@ -799,11 +809,12 @@ wire wrk_hit  = wrk_p1 && scq_v && (scq_tag == wrk_addr1[15:12]);
 // del DO de sc_tag/sc_v hacia wrk_hit, que NO se toca).
 wire wr_accept = vram_valid && vram_write;
 wire fill_now = fill_pend && !wrk_p1 && !wr_accept && scv_ready;
+wire fill_sc  = fill_now && !fill_nosc;  // _M1: el fill que SI entra en la sc-cache
 wire [12:0] scw_idx = wrk_hit ? c_idx13(wrk_addr1) : c_idx13(fill_addr);
-wire scw_we0 = (wrk_hit && !wrk_mask1[0]) || fill_now;
-wire scw_we1 = (wrk_hit && !wrk_mask1[1]) || fill_now;
-wire scw_we2 = (wrk_hit && !wrk_mask1[2]) || fill_now;
-wire scw_we3 = (wrk_hit && !wrk_mask1[3]) || fill_now;
+wire scw_we0 = (wrk_hit && !wrk_mask1[0]) || fill_sc;
+wire scw_we1 = (wrk_hit && !wrk_mask1[1]) || fill_sc;
+wire scw_we2 = (wrk_hit && !wrk_mask1[2]) || fill_sc;
+wire scw_we3 = (wrk_hit && !wrk_mask1[3]) || fill_sc;
 wire [7:0] scw_b0 = wrk_hit ? wrk_data1[ 7: 0] : fill_word[ 7: 0];
 wire [7:0] scw_b1 = wrk_hit ? wrk_data1[15: 8] : fill_word[15: 8];
 wire [7:0] scw_b2 = wrk_hit ? wrk_data1[23:16] : fill_word[23:16];
@@ -914,14 +925,84 @@ generate for (vg = 0; vg < VB_N; vg = vg + 1) begin : g_vbcam
     assign vb_im[vg] = vb_val[vg] && (vb_a[vg] == wrk_addr1);
 end endgenerate
 wire vb_rhit = |vb_rm;
-// mux por PRIORIDAD (gana el indice mas bajo), no OR: inerte ante duplicados
+// 11/11/2026: mux AND-OR (3 niveles de LUT) en vez del de PRIORIDAD (una cadena de 16), que en el 138K quedaba en el
+// camino critico vb_a -> vb_dat2 a 88,5 MHz. Es la misma funcion porque dos entradas con la misma direccion llevan el
+// MISMO dato: solo entran por fills de sprite con el fill_word coherente (guarda pf_dirty, arreglos _150) y una
+// escritura invalida de golpe TODAS las que coinciden (vb_im), asi que no puede quedar una vieja junto a una nueva.
+// tb_vbcoh (con y sin +SPCPOOL) lo comprueba: cualquier mezcla de datos distintos saldria como dato rancio.
 integer vbi;
 reg [31:0] vb_rd;
 always @(*) begin
-    vb_rd = vb_w[VB_N-1];
-    for (vbi = VB_N-1; vbi >= 0; vbi = vbi - 1)
-        if (vb_rm[vbi]) vb_rd = vb_w[vbi];
+    vb_rd = 32'd0;
+    for (vbi = 0; vbi < VB_N; vbi = vbi + 1)
+        vb_rd = vb_rd | (vb_w[vbi] & {32{vb_rm[vbi]}});
 end
+
+// ============================================================================
+// _M1 CACHE DE SPRITES (10/11/2026, Space Manbow; solo con SPC = 1). El motor de sprites del V9968 lee el dato A CIEGAS
+// 14-15 ciclos despues de pedirlo (vdp_sprite_select_visible_planes.v subfase 15, vdp_sprite_info_collect.v subfase 14):
+// un fallo que va al backend (26-43 ciclos) deja el dato de la peticion ANTERIOR = un sprite con la X, el color o el patron
+// de otro durante UNA linea: las "rayitas". En SCREEN 4 con la disposicion de Konami (Space Manbow: patrones del fondo en
+// 0000h, colores del fondo en 2000h, nombres en C000h/FC00h, patrones de sprite en C800h, colores y atributos en F000-FFFFh)
+// c_idx13 pone TODA la zona C000-FFFFh encima de 0000-3FFFh: colores de sprite F528h contra colores del fondo 3528h,
+// patrones de sprite C8A8h contra patrones del fondo 08A8h. El fondo relee esas palabras en cada linea y desaloja las del
+// sprite cuadro tras cuadro; el victim buffer (16) no da abasto. Medido (tb_manbow + manbow_cache.py, lecturas reales del
+// juego): 46 fallos de sprite por cuadro en regimen con la escena QUIETA; con esta cache, 0 desde el segundo cuadro.
+// QUE ES: 2048 palabras (8 KB) de mapeo directo por v[10:0], etiqueta v[15:11], SOLO para lecturas de SPRITE, que solo
+// rellenan los fills de sprite (fill_now && fill_sp: el mismo fill_word que entra en la sc-cache, con su guarda pf_dirty y
+// sus dos arreglos de coherencia _150) y que las escrituras ACTUALIZAN en sitio con etiqueta (write-check en wrk_p1, como la
+// sc-cache: mismo vram_address en el puerto de lectura y lectura/escritura mutuamente excluyentes). El fondo no la toca,
+// asi que no la desaloja. El conjunto de sprites de un MSX2 (tablas de atributos y colores + patrones, unos 6 KB) cabe.
+// COMO SE SIRVE: se lee en T a la vez que la sc-cache; en T+1 (spr_p1), si la sc-cache falla y esta acierta, el acierto se
+// entrega por la ETAPA 2 del victim buffer (vb_hit2/vb_dat2 -> pipe[2]): sale en el MISMO ciclo 8 que un acierto normal y
+// no va al backend. Sin acierto, todo sigue exactamente como antes. Con SPC = 0 la sintesis la quita entera.
+// COSTE (Zynq): 4 BRAM18 de datos + 1 de etiquetas; un comparador de 5 bits del DO de la BRAM a vb_hit2.
+// ============================================================================
+wire        spc_hit1;                    // T+1: la lectura de sprite de spr_addr1 esta en la cache de sprites
+wire [31:0] spc_dat1;
+generate if (SPC != 0) begin : g_spc
+    reg  [7:0]  spc_d0 [0:2047];
+    reg  [7:0]  spc_d1 [0:2047];
+    reg  [7:0]  spc_d2 [0:2047];
+    reg  [7:0]  spc_d3 [0:2047];
+    reg  [5:0]  spc_tv [0:2047];         // {valid, etiqueta v[15:11]}
+    reg  [7:0]  spcq_d0, spcq_d1, spcq_d2, spcq_d3;
+    reg  [5:0]  spcq_tv;
+    wire [10:0] spc_ri   = vram_address[12:2];                       // v[10:0] de la peticion de este ciclo
+    wire        spc_upd  = wrk_p1 && spcq_tv[5] && (spcq_tv[4:0] == wrk_addr1[15:11]);
+    wire        spc_fill = fill_now && fill_sp;                      // nunca coincide con spc_upd (fill_now exige !wrk_p1)
+    wire [10:0] spc_wi   = spc_upd ? wrk_addr1[10:0] : fill_addr[10:0];
+    always @(posedge clk_vdp) begin
+        if ((spc_upd && !wrk_mask1[0]) || spc_fill) spc_d0[spc_wi] <= spc_upd ? wrk_data1[ 7: 0] : fill_word[ 7: 0];
+        spcq_d0 <= spc_d0[spc_ri];
+    end
+    always @(posedge clk_vdp) begin
+        if ((spc_upd && !wrk_mask1[1]) || spc_fill) spc_d1[spc_wi] <= spc_upd ? wrk_data1[15: 8] : fill_word[15: 8];
+        spcq_d1 <= spc_d1[spc_ri];
+    end
+    always @(posedge clk_vdp) begin
+        if ((spc_upd && !wrk_mask1[2]) || spc_fill) spc_d2[spc_wi] <= spc_upd ? wrk_data1[23:16] : fill_word[23:16];
+        spcq_d2 <= spc_d2[spc_ri];
+    end
+    always @(posedge clk_vdp) begin
+        if ((spc_upd && !wrk_mask1[3]) || spc_fill) spc_d3[spc_wi] <= spc_upd ? wrk_data1[31:24] : fill_word[31:24];
+        spcq_d3 <= spc_d3[spc_ri];
+    end
+    // etiquetas: el barrido post-reset de la sc-cache (scv_swp, 8192 ciclos) las borra de paso; luego solo los fills
+    wire        spt_we = !scv_ready || spc_fill;
+    wire [10:0] spt_wi = !scv_ready ? scv_swp[10:0] : fill_addr[10:0];
+    always @(posedge clk_vdp) begin
+        if (spt_we) spc_tv[spt_wi] <= scv_ready ? {1'b1, fill_addr[15:11]} : 6'd0;
+        spcq_tv <= scv_ready ? spc_tv[spc_ri] : 6'd0;
+    end
+    assign spc_hit1 = (spr_tag1[4:2] == C_SPRITE) && spcq_tv[5] && (spcq_tv[4:0] == spr_addr1[15:11]);
+    assign spc_dat1 = {spcq_d3, spcq_d2, spcq_d1, spcq_d0};
+end
+else begin : g_sin_spc
+    assign spc_hit1 = 1'b0;
+    assign spc_dat1 = 32'd0;
+end
+endgenerate
 
 // ETAPA 2 del lookup (T+2): lo que fallo ventana + sc-cache en T+1 llega aqui
 // con el veredicto del CAM y su dato ya REGISTRADOS.
@@ -953,12 +1034,12 @@ always @(posedge clk_vdp) begin
     scq_d3 <= sc_d3[c_idx13(vram_address)];
 end
 always @(posedge clk_vdp) begin
-    if (fill_now) sc_tag[c_idx13(fill_addr)] <= fill_addr[15:12];
+    if (fill_sc) sc_tag[c_idx13(fill_addr)] <= fill_addr[15:12];
     scq_tag <= sc_tag[c_idx13(vram_address)];
 end
 // _120d: puerto BSRAM de los valids (write-site unico muxeado + lectura
 // gated: durante el barrido post-reset todo se lee como invalido)
-wire        scv_we = !scv_ready || fill_now;
+wire        scv_we = !scv_ready || fill_sc;
 wire [12:0] scv_wi = !scv_ready ? scv_swp[12:0] : c_idx13(fill_addr);
 always @(posedge clk_vdp) begin
     if (scv_we) sc_v[scv_wi] <= scv_ready;
@@ -1087,7 +1168,7 @@ always @(posedge clk_vdp or negedge rst_n) begin
         ecq_wp <= 0; ecq_rp <= 0; bg_quiet <= 0;      // _135
         ec_cred0 <= 0; ec_cred1 <= 0;
         pfB_pend <= 0; pfB_wr <= 0;
-        fill_pend <= 0; fill_addr <= 0; fill_word <= 0; fill_sp <= 0;
+        fill_pend <= 0; fill_addr <= 0; fill_word <= 0; fill_sp <= 0; fill_nosc <= 0;
         pwq_v <= 0;
         pww_en <= 0; pww_idx <= 0; pww_tag <= 0; pww_data <= 0;
         for (pi = 0; pi < 7; pi = pi + 1) pipe[pi] <= 38'd0;
@@ -1196,8 +1277,15 @@ always @(posedge clk_vdp or negedge rst_n) begin
         // (1) CAPTURA del veredicto del CAM en la etapa 1 del lookup. Solo hace
         //     falta el ciclo del fetch (CE = spr_p1, un FF plano).
         if (spr_p1) begin
-            vb_hit2 <= vb_rhit;
-            vb_dat2 <= vb_rd;
+            // _M1: un acierto de la cache de sprites (SPC = 1) entra por la misma etapa que el del victim buffer
+            // El mux lo elige spc_hit1 (FF + DO de la BRAM de etiquetas, comparador de 5 bits) y NO vb_rhit
+            // (CAM de 16 x 16 bits, el camino largo): asi el 2:1 se funde con el ultimo OR del mux del VB y no le
+            // anade un nivel. Rutado del 138K (10/11) con vb_rhit de selector: spr_addr1 -> vb_dat2 a -0,08..-1,7 ns.
+            // Es la misma funcion: VB y cache se llenan con el MISMO fill_word del MISMO fill de sprite, y una
+            // escritura INVALIDA la entrada del VB y ACTUALIZA la de la cache; si aciertan los dos, el dato es igual.
+            // Con SPC = 0, spc_hit1 = 0 y queda vb_dat2 <= vb_rd, como antes de la cache.
+            vb_hit2 <= vb_rhit || spc_hit1;
+            vb_dat2 <= spc_hit1 ? spc_dat1 : vb_rd;
         end
         // (2) INVALIDACION por escritura — PRIMERO en el texto, pero es
         //     IMPOSIBLE que coincida con el insert (fill_now exige !wrk_p1), asi
@@ -1879,6 +1967,9 @@ always @(posedge clk_vdp or negedge rst_n) begin
                         ( (SC_FILL_POLICY == 3'd0) ? 1'b1 :
                           (SC_FILL_POLICY == 3'd1) ? (cur_tag[4:2] != C_COMMAND) :
                                                      (cur_tag[4:2] == C_SPRITE) )) begin
+                        // _M1: con la cache de sprites y SPC_SOLO, el fill de sprite no entra en la sc-cache (solo en la de
+                        // sprites y en el VB): no desaloja al fondo de los modos de patrones
+                        fill_nosc <= SPC_SOLO && (cur_tag[4:2] == C_SPRITE);
                         fill_pend <= 1'b1;
                         fill_addr <= cur_addrw;
                         fill_word <= {w_hi, w_lo};

@@ -213,6 +213,52 @@ static int en_el_pack(const char *m)                  /* busca un texto en el pa
     return 0;
 }
 
+/* Ajustes del menu dice la version del SISTEMA (11/11/2026). La sacaba de dos constantes del PL: el puerto 2Fh ("Z1.4") y el 29h
+ * (FPGA_PATCH, el tercer numero). Una version que solo cambia el companion lleva el PL de la anterior y salia con su numero (la Z1.4.4,
+ * sobre el PL de la Z1.4.1, decia "Z1.4.1"; la Z1.4.8 dice "Z1.4.7"). Antes de soltar el MSX se cambian en el pack, en la DDR, las dos
+ * lecturas de Ajustes por LD A,n (2 bytes, como el IN) con lo que dice ota_info: el IN A,(2Fh) de Ajustes (DB 2F FE FF 28: IN; CP FFh;
+ * JR Z) y el IN A,(29h) de ver_pnib (DB 29 FE 64 D0 B7 C8: IN; CP 100; RET NC; OR A; RET Z). Solo en la ventana del menu del pack
+ * (0x6C000-0x73FFF, insertar_en_pack.py) y solo si cada firma sale UNA vez. El resto del menu (lo que distingue la Zynq de la Tang por
+ * el 2Fh) no se toca. Sin ota_info (JTAG) o con una version que no sea "Zm.n.p", nada. */
+#define MENU_INI 0x6C000U
+#define MENU_FIN 0x74000U
+static u32 menu_busca(const u8 *f, u32 n)             /* donde esta la firma en la ventana del menu; 0 si no esta o esta mas de una vez */
+{
+    volatile const u8 *p = (volatile const u8 *)PACK_DDR;
+    u32 i, k, donde = 0, veces = 0;
+    for (i = MENU_INI; i + n <= MENU_FIN; i++) {
+        for (k = 0; k < n && p[i + k] == f[k]; k++) { }
+        if (k == n) { donde = i; veces++; }
+    }
+    return veces == 1U ? donde : 0U;
+}
+static int num_de(const char **s, u32 *v)              /* digitos decimales; 1 si habia alguno */
+{
+    const char *p = *s;
+    u32 n = 0;
+    while (*p >= '0' && *p <= '9') { n = n * 10U + (u32)(*p - '0'); p++; }
+    if (p == *s) return 0;
+    *s = p; *v = n;
+    return 1;
+}
+void ota_menu_version(void)
+{
+    static const u8 f2f[] = { 0xDB, 0x2F, 0xFE, 0xFF, 0x28 };
+    static const u8 f29[] = { 0xDB, 0x29, 0xFE, 0x64, 0xD0, 0xB7, 0xC8 };
+    volatile u8 *p = (volatile u8 *)PACK_DDR;
+    const char *s = ver_act;
+    u32 ma, mi, pa = 0, a, b;
+    if (*s++ != 'Z' || !num_de(&s, &ma) || *s++ != '.' || !num_de(&s, &mi)) return;
+    if (*s == '.') { s++; if (!num_de(&s, &pa)) return; }
+    if (ma < 1U || ma > 6U || mi > 15U || pa > 99U) return;   /* ver_pnib: nibble alto 9+m (A..F), bajo = n en hex; el tercero, 0..99 */
+    a = menu_busca(f2f, sizeof f2f);
+    b = menu_busca(f29, sizeof f29);
+    if (!a || !b) { log_str("ota: el menu no tiene las firmas de la version: Ajustes dira la del PL\n"); return; }   /* las dos o ninguna */
+    p[a] = 0x3EU; p[a + 1U] = (u8)(((ma + 9U) << 4) | mi);  /* LD A,n */
+    p[b] = 0x3EU; p[b + 1U] = (u8)pa;
+    log_str("ota: Ajustes dira "); log_str(ver_act); log_str("\n");
+}
+
 static void variante_del_pack(void)                  /* sin info: la variante se ve en el pack (Nextor 3 e idioma) */
 {
     char *q = put_s(var_act, en_el_pack("NEXTORv3_DRIVER") ? "nextor3" : "nextor214");
@@ -1087,8 +1133,12 @@ static void busca_s3(void)
     }
 }
 
+static u32 t_busca;                                  /* cuando empezo la busqueda en marcha (red de seguridad de ota_poll) */
+#define BUSCA_MAX_MS 120000U                         /* cada paso tiene su plazo (el peor caso por la S3 ronda 95 s); esto es por si acaso */
+
 static void buscar(void)
 {
+    t_busca = sys_now();
     scpy(url_base, beta_pide ? OTA_URL_BETA : OTA_URL, sizeof url_base);
     scpy(servidor, beta_pide ? "msx.barcelona · beta" : "msx.barcelona", sizeof servidor);
     disc_cierra();
@@ -1111,6 +1161,34 @@ static void pide_manifiesto(void)
     p = put_s(u, url_base); put_s(p, "manifiesto.txt");
     st = O_MANIF; sucio = 1;
     if (!h_get(u, (u8 *)W->manif, sizeof W->manif - 1U, 0)) falla(h.err);
+}
+
+/* corta la busqueda en marcha (O_BUSCA / O_MANIF) sin dejar nada abierto: la conexion HTTP, la difusion UDP y la S3 (11/11/2026) */
+static void busca_corta(void)
+{
+    h_soltar(); h.st = H_LIBRE;
+    disc_cierra();
+    if (s3_udp) { s3_udp_cierra(s3_udp); s3_udp = 0; }
+    if (via_s3) { s3_suelta(); via_s3 = 0; }
+    st = O_REPOSO; sucio = 1;
+}
+
+/* La pagina Perfiles, vista del servidor (11/11/2026): como = 0 U/R (buscar), 1 B (el otro canal y buscar), 2 al abrir la vista
+ * (buscar si no se ha buscado). A diferencia de ota_tecla:
+ *   - corta la busqueda que ya estaba en marcha y empieza otra (en la Z1.4.7 U y B no hacian nada hasta que acabara: por la WiFi de
+ *     la S3 son segundos, y parecia colgada);
+ *   - vale tambien con la placa arrancada desde SD (ahi ota_tecla solo atiende la A y la vista se quedaba en "Pulsa U"). Al abrir
+ *     la vista no se busca si hay un BOOT.bin de la SD leido o recien grabado en la A: eso es de la pagina de la actualizacion.
+ * 0 = no se busca: bajando o grabando el sistema, bajando un perfil o leyendo el BOOT.bin de la SD */
+int ota_busca(int como)
+{
+    if (como == 2 && (st == O_SD_LISTO || st == O_SD_HECHO)) return 0;
+    if (st == O_BUSCA || st == O_MANIF) { log_str("ota: busqueda cortada (otra)\n"); busca_corta(); }
+    else if (ota_ocupada()) return 0;
+    if (como == 1) beta_pide ^= 1U;
+    a_armada = 0; f_armada = 0;
+    buscar();
+    return 1;
 }
 
 static void instalar(void)
@@ -1365,6 +1443,11 @@ void ota_poll(void)
     confirmar_poll();
     if (pst == 1) pdl_poll();
     if (st == O_BUSCA || st == O_MANIF) sucio = 1;   /* el icono de "buscando" gira */
+    if ((st == O_BUSCA || st == O_MANIF) && sys_now() - t_busca > BUSCA_MAX_MS) {   /* nunca girando para siempre (11/11/2026) */
+        log_str("ota: la busqueda pasa de 2 min: se corta\n");
+        busca_corta();
+        falla("sin respuesta");
+    }
     switch (st) {
         case O_BUSCA:
             if (via_s3) { busca_s3(); break; }
