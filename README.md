@@ -60,7 +60,7 @@ Captures of the board's HDMI output, running Z1.4.9.
 
 | | What | Notes |
 |---|---|---|
-| **Required** | **OMDAZZ ZYNQ MINI** (XC7Z020-CLG400) | 512 MB DDR3, 16 MB QSPI, two microSD slots, USB host, HDMI, Ethernet, OLED. Everything the MSXimus Z uses is on the board |
+| **Required** | **OMDAZZ ZYNQ MINI** (XC7Z020-CLG400) | 512 MB DDR3, 16 MB QSPI, two microSD slots, USB host, HDMI, Ethernet, OLED. Everything the MSXimus Z uses is on the board. It is sold on [AliExpress](https://www.aliexpress.com/item/1005002061806290.html): pick the **7020** model in the listing (the core does not fit in the 7010) |
 | **Required** | 5 V USB-C power and an **HDMI** display | 720p output, with audio |
 | **Required** | **USB keyboard** and a USB-C to USB-A adapter (or a USB-C hub) for the **P3** connector | Needed to install (it is all done from the F12 panel) and to use the MSX |
 | **Required** | A **microSD** for **TF1**, 1 GB or larger | Carries the `BOOT.bin` to install; afterwards it holds the system **profiles** (F12 → P). The MSX does not see it. The board prepares it itself |

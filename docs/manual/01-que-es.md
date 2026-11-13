@@ -43,7 +43,7 @@ El menú de arranque es el del MSXimus, de 32 KB en ROM: RETURN lanza, ESC arran
 
 | | Qué | Notas |
 |---|---|---|
-| **Obligatorio** | La placa **OMDAZZ ZYNQ MINI** | Con el XC7Z020-CLG400, 512 MB de DDR3, QSPI de 16 MB, dos ranuras microSD, USB host, HDMI, Ethernet y la OLED. Todo lo que usa el MSXimus Z viene soldado; no hay módulos que comprar aparte |
+| **Obligatorio** | La placa **OMDAZZ ZYNQ MINI** | Con el XC7Z020-CLG400, 512 MB de DDR3, QSPI de 16 MB, dos ranuras microSD, USB host, HDMI, Ethernet y la OLED. Todo lo que usa el MSXimus Z viene soldado; no hay módulos que comprar aparte. Se compra en [AliExpress](https://es.aliexpress.com/item/1005002061806290.html): en el anuncio hay que elegir el modelo **7020** (el core no cabe en el 7010) |
 | **Obligatorio** | Una **microSD** en la ranura **TF2** | Es la "SD" del MSX: ROMs, discos y carpetas WaveGame. La primera partición en **FAT16** para que el menú pueda escribir (guardados, descargas); con FAT32 solo lee. El [capítulo 03](03-tarjeta-sd.md) explica cómo prepararla |
 | **Obligatorio** | Una segunda **microSD** para **TF1**, de 1 GB o más | Para instalar: con el `BOOT.bin` en la raíz (FAT32 o FAT16) la placa arranca de ella y lo graba en su QSPI ([capítulo 02](02-instalacion.md), *Puesta en funcionamiento*). Después es la tarjeta de los **perfiles** del sistema, que prepara la propia placa ([capítulo 03](03-tarjeta-sd.md)). El interruptor **SW1** elige si se arranca de la QSPI o de TF1 y solo se lee al dar la corriente |
 | **Obligatorio** | Cable HDMI y la alimentación (5 V) por el USB-C de la placa | |
